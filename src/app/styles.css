@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Semantic names only; components use them through Tailwind
+ * utilities (e.g. `bg-surface`, `text-text-muted`, `rounded-card`).
+ * Dark values are swapped in below via prefers-color-scheme.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-canvas: oklch(0.975 0.004 250);
+  --color-surface: oklch(1 0 0);
+  --color-border: oklch(0.88 0.008 250);
+  --color-text: oklch(0.21 0.015 250);
+  --color-text-muted: oklch(0.45 0.015 250);
+  --color-accent: oklch(0.5 0.16 255);
+  --color-accent-contrast: oklch(0.99 0 0);
+  --color-success: oklch(0.5 0.13 150);
+  --color-warning: oklch(0.55 0.13 70);
+  --color-danger: oklch(0.52 0.19 27);
+  --color-focus: oklch(0.55 0.2 255);
+
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: oklch(0.17 0.01 250);
+    --color-surface: oklch(0.22 0.012 250);
+    --color-border: oklch(0.34 0.015 250);
+    --color-text: oklch(0.94 0.005 250);
+    --color-text-muted: oklch(0.74 0.01 250);
+    --color-accent: oklch(0.72 0.14 255);
+    --color-accent-contrast: oklch(0.17 0.01 250);
+    --color-success: oklch(0.75 0.14 150);
+    --color-warning: oklch(0.8 0.13 80);
+    --color-danger: oklch(0.72 0.17 27);
+    --color-focus: oklch(0.78 0.15 255);
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Visible focus for keyboard users; never removed. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
