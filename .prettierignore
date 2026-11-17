@@ -1,0 +1,11 @@
+dist
+dist-ssr
+coverage
+test-results
+playwright-report
+blob-report
+package-lock.json
+docs
+CLAUDE.md
+LICENSE
+.mcp.json
