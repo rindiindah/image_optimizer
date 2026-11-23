@@ -35,6 +35,9 @@ npm run dev
 | `npm run format`       | Format with Prettier                                              |
 | `npm run format:check` | Check formatting without changing files                           |
 
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, format check,
+typecheck, unit tests and the browser tests (Chromium, Firefox, WebKit) on every push and pull request.
+
 ## Privacy
 
 Images are processed locally in your browser. The site's Content-Security-Policy

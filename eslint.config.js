@@ -7,7 +7,15 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "coverage", "test-results", "playwright-report", "blob-report", "docs"]),
+  globalIgnores([
+    "dist",
+    "dist-harness",
+    "coverage",
+    "test-results",
+    "playwright-report",
+    "blob-report",
+    "docs",
+  ]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -28,7 +36,11 @@ export default defineConfig([
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ["*.config.{js,ts}", "tests/e2e/**/*.ts"],
+    files: ["src/workers/**/*.ts", "tests/harness/**/*.ts"],
+    languageOptions: { globals: { ...globals.browser, ...globals.worker } },
+  },
+  {
+    files: ["*.config.{js,ts}", "vite.shared.ts", "tests/e2e/**/*.ts"],
     languageOptions: { globals: globals.node },
   },
   {
