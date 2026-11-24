@@ -22,9 +22,14 @@ describe("App shell", () => {
     expect(screen.getByText(strings.workspace.privacy)).toBeTruthy();
   });
 
-  it("has no interactive controls before they work (no placeholder UI)", () => {
+  it("has only the working upload controls, nothing for compression yet (no placeholder UI)", () => {
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll("button, input, select, textarea, a[href]")).toHaveLength(0);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      strings.upload.chooseButton,
+    ]);
+    const inputs = [...container.querySelectorAll("input, select, textarea")];
+    expect(inputs.map((i) => i.getAttribute("type"))).toEqual(["file"]);
+    expect(container.querySelectorAll("a[href]")).toHaveLength(0);
   });
 });

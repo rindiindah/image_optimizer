@@ -41,7 +41,9 @@ test("serves the empty workspace with the production security headers", async ({
   ).toBeVisible();
   await expect(page.getByText(strings.workspace.notYetAvailable)).toBeVisible();
   await expect(page.getByRole("contentinfo")).toContainText(strings.footer.licence);
-  await expect(page.getByRole("button")).toHaveCount(0);
+  // Only the working upload control; nothing for compression yet (M3).
+  await expect(page.getByRole("button")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: strings.upload.chooseButton })).toBeVisible();
 
   // The stylesheet loaded under `style-src 'self'` (design tokens applied).
   const bodyBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

@@ -5,6 +5,7 @@
  */
 import type { Progress } from "../engine/optimize";
 import type { OptimizationResult, OptimizeSettings } from "../types/engine";
+import type { ImageInfo } from "../types/image";
 import type {
   CodecCapability,
   EncoderPreference,
@@ -15,6 +16,11 @@ import type {
 
 export type ClientOutcome =
   | { status: "done"; result: OptimizationResult; files: Blob[] }
+  | { status: "cancelled" }
+  | { status: "error"; code: EngineErrorCode };
+
+export type InspectOutcome =
+  | { status: "done"; info: ImageInfo; thumbnail: Blob; preview: Blob }
   | { status: "cancelled" }
   | { status: "error"; code: EngineErrorCode };
 
@@ -114,6 +120,28 @@ export class EngineClient {
       },
       () => ({ status: "error", code: "worker_crashed" }),
       options.signal,
+      () => ({ status: "cancelled" }),
+    );
+  }
+
+  /** Decode and describe an added file (M2). Only the file's bytes go to the worker. */
+  inspect(file: Blob, signal?: AbortSignal): Promise<InspectOutcome> {
+    const request: WorkerRequest = { type: "inspect", jobId: this.#nextJobId++, file };
+    return this.#run<InspectOutcome>(
+      request,
+      (message, settle) => {
+        if (message.type === "error") settle({ status: "error", code: message.code });
+        else if (message.type === "inspected") {
+          settle({
+            status: "done",
+            info: message.info,
+            thumbnail: new Blob([message.thumbnail.data], { type: message.thumbnail.mime }),
+            preview: new Blob([message.preview.data], { type: message.preview.mime }),
+          });
+        }
+      },
+      () => ({ status: "error", code: "worker_crashed" }),
+      signal,
       () => ({ status: "cancelled" }),
     );
   }

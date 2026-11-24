@@ -3,13 +3,28 @@
  * production CSP. Exposes `window.engineHarness`; renders nothing.
  */
 import { EngineClient } from "../../src/workers/engine-client";
-import type { EngineHarness, HarnessReport, HarnessRun, HarnessSource } from "./types";
+import type {
+  EngineHarness,
+  HarnessReport,
+  HarnessRun,
+  HarnessSource,
+  HarnessPicture,
+  HeicSpikeReport,
+  InspectReport,
+} from "./types";
 
 /** A photo-like test image: smooth gradients plus fine noise (compresses like a photo, not a flat graphic). */
 async function generate(source: Extract<HarnessSource, { kind: "generated" }>): Promise<Blob> {
   const canvas = new OffscreenCanvas(source.width, source.height);
   const context = canvas.getContext("2d");
   if (!context) throw new Error("no 2d context");
+  const pattern = source.pattern ?? "photo";
+  if (pattern === "flat") {
+    context.fillStyle = "#3a7bd5";
+    context.fillRect(0, 0, source.width, source.height);
+    return canvas.convertToBlob({ type: source.type, quality: 0.95 });
+  }
+  if (pattern === "empty") return canvas.convertToBlob({ type: source.type }); // untouched: all zero
   const image = context.createImageData(source.width, source.height);
   const { data } = image;
   let seed = 12345;
@@ -36,6 +51,8 @@ async function generate(source: Extract<HarnessSource, { kind: "generated" }>): 
 
 async function sourceBlob(source: HarnessSource): Promise<Blob> {
   if (source.kind === "generated") return generate(source);
+  if (source.kind === "bytes")
+    return new Blob([new Uint8Array(source.bytes)], { type: source.type });
   const response = await fetch(source.url);
   if (!response.ok) throw new Error(`fixture missing (HTTP ${String(response.status)})`);
   return response.blob();
@@ -63,9 +80,16 @@ function runBlob(blob: Blob): Promise<HarnessReport> {
 }
 
 async function runFile(blob: Blob, spec: HarnessRun): Promise<HarnessReport> {
-  const bitmap = await createImageBitmap(blob);
-  const { width, height } = bitmap;
-  bitmap.close();
+  // The main thread can't decode every format (HEIC in Chrome/Firefox): 0 × 0 then.
+  let width = 0;
+  let height = 0;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    ({ width, height } = bitmap);
+    bitmap.close();
+  } catch {
+    // not decodable here; the worker decodes it
+  }
 
   const started = performance.now();
   const outcome = await client.optimize(blob, spec.settings, {
@@ -98,8 +122,60 @@ declare global {
   }
 }
 
+async function heicSpike(url: string): Promise<HeicSpikeReport> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`fixture missing (HTTP ${String(response.status)})`);
+  const bytes = await response.arrayBuffer();
+  const worker = new Worker(new URL("./heic-spike.worker.ts", import.meta.url), {
+    type: "module",
+  });
+  try {
+    return await new Promise<HeicSpikeReport>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<HeicSpikeReport>) => {
+        resolve(event.data);
+      };
+      worker.onerror = () => {
+        reject(new Error("HEIC spike worker crashed"));
+      };
+      worker.postMessage(bytes, [bytes]);
+    });
+  } finally {
+    worker.terminate();
+  }
+}
+
+async function picture(blob: Blob): Promise<HarnessPicture> {
+  const bitmap = await createImageBitmap(blob);
+  const result = { size: blob.size, type: blob.type, width: bitmap.width, height: bitmap.height };
+  bitmap.close();
+  return result;
+}
+
+async function inspect(source: HarnessSource): Promise<InspectReport> {
+  const blob = await sourceBlob(source);
+  const started = performance.now();
+  const outcome = await client.inspect(blob);
+  const ms = Math.round(performance.now() - started);
+  if (outcome.status === "cancelled") return { status: "cancelled", ms };
+  if (outcome.status === "error") return { status: "error", code: outcome.code, ms };
+  return {
+    status: "done",
+    info: outcome.info,
+    thumbnail: await picture(outcome.thumbnail),
+    preview: await picture(outcome.preview),
+    ms,
+  };
+}
+
+async function bytesOf(source: HarnessSource): Promise<number[]> {
+  return [...new Uint8Array(await (await sourceBlob(source)).arrayBuffer())];
+}
+
 window.engineHarness = {
   run,
   runBlob,
   capabilities: () => client.capabilities(),
+  heicSpike,
+  inspect,
+  bytesOf,
 };

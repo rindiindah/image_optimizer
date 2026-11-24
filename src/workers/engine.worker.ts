@@ -13,7 +13,9 @@ import {
   loadWebp,
   quantizeToPng,
 } from "./codecs/wasm-codecs";
-import { decode, encodeNative, hasTransparency } from "./pixels";
+import { MAX_PIXELS } from "../utils/limits";
+import { InspectError, inspectFile } from "./inspect";
+import { DecodeError, decodeImage, encodeNative, hasTransparency } from "./pixels";
 import type { CodecCapability, EngineErrorCode, WorkerRequest, WorkerResponse } from "./protocol";
 import { createWorkerEncoder, ImageTooLargeError } from "./worker-encoder";
 
@@ -32,15 +34,20 @@ async function handleOptimize(
     return;
   }
   let bitmap: ImageBitmap;
+  let highBitDepth: boolean;
   try {
-    bitmap = await decode(request.file);
-  } catch {
-    post({ type: "error", jobId, code: "decode_failed" });
+    ({ bitmap, highBitDepth } = await decodeImage(request.file, MAX_PIXELS));
+  } catch (error) {
+    post({
+      type: "error",
+      jobId,
+      code: error instanceof DecodeError ? error.code : "decode_failed",
+    });
     return;
   }
 
   try {
-    const baseFlags: Flag[] = [];
+    const baseFlags: Flag[] = highBitDepth ? ["hdr_tone_mapped"] : [];
     let background: string | null = null;
     if (settings.format === "image/jpeg" && hasTransparency(bitmap)) {
       // Never drop transparency without asking: the user must choose a background colour.
@@ -79,6 +86,24 @@ async function handleOptimize(
     post({ type: "error", jobId, code: errorCode(error) });
   } finally {
     bitmap.close();
+  }
+}
+
+async function handleInspect(request: Extract<WorkerRequest, { type: "inspect" }>): Promise<void> {
+  const { jobId } = request;
+  if (typeof OffscreenCanvas === "undefined") {
+    post({ type: "error", jobId, code: "unsupported_browser" });
+    return;
+  }
+  try {
+    const { info, thumbnail, preview } = await inspectFile(request.file);
+    post({ type: "inspected", jobId, info, thumbnail, preview }, [thumbnail.data, preview.data]);
+  } catch (error) {
+    post({
+      type: "error",
+      jobId,
+      code: error instanceof InspectError ? error.code : "decode_failed",
+    });
   }
 }
 
@@ -146,6 +171,8 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   if (request.type === "optimize") {
     void handleOptimize(request);
+  } else if (request.type === "inspect") {
+    void handleInspect(request);
   } else {
     void detectCapabilities().then((capabilities) => {
       post({ type: "capabilities", jobId: request.jobId, capabilities });

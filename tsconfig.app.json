@@ -23,6 +23,6 @@
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "tests/unit", "tests/harness"],
+  "include": ["src", "tests/harness"],
   "exclude": ["src/workers/engine.worker.ts"]
 }
