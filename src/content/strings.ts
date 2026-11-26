@@ -12,7 +12,7 @@ export const strings = {
     emptyBody:
       "This app will let you set the exact output file size you need, then crop, resize, convert and download your images.",
     notYetAvailable:
-      "Cropping, rotating and resizing aren't available yet. This part of the app is still being built.",
+      "Side-by-side comparison, several images at once and ZIP download aren't available yet. These parts of the app are still being built.",
     privacy: "All processing happens in your browser. Your images are never uploaded.",
   },
   upload: {
@@ -48,6 +48,62 @@ export const strings = {
     heading: "Preview",
     alt: (name: string) => `Original image: ${name}`,
     caption: "Original image. Shown at reduced size; the full image is kept for processing.",
+    editedAlt: (name: string) => `Edited image: ${name}`,
+    edited: (crop: string | null, rotation: number) =>
+      `Edited: ${[crop ? `cropped to ${crop}` : "", rotation ? `rotated ${String(rotation)}°` : ""]
+        .filter(Boolean)
+        .join(", ")}. Shown at reduced size.`,
+    showOriginal: "Show original",
+    edit: "Crop and rotate",
+    editBusy: "Cropping is available again when this image has finished processing.",
+  },
+  edit: {
+    heading: "Crop and rotate",
+    help: "Drag the corners or edges, or move the selection. Arrow keys move it; on a handle they resize (Shift: 10 px, Ctrl or Cmd: 100 px). For exact pixels, use the fields.",
+    ratioLabel: "Shape",
+    ratios: {
+      free: "Free",
+      original: "Original",
+      "1:1": "Square (1:1)",
+      "4:3": "4:3",
+      "3:2": "3:2",
+      "16:9": "16:9",
+      exact: "Exact size",
+    },
+    portrait: "Portrait (3:4, 2:3, 9:16)",
+    exactWidth: "Exact width (px)",
+    exactHeight: "Exact height (px)",
+    exactHelp:
+      "The selection keeps this shape, and the result is exactly this size. It can't be larger than the selection: images are never enlarged.",
+    exactTooLarge: (w: number, h: number) =>
+      `The selection (${String(w)} × ${String(h)} px) is smaller than the exact size. Select a larger area or enter a smaller size.`,
+    exactInvalid: "Enter a whole number of pixels (1 or more) for both sides.",
+    rotateLeft: "Rotate left",
+    rotateRight: "Rotate right",
+    fieldsLegend: "Selection in image pixels",
+    x: "Left (X)",
+    y: "Top (Y)",
+    width: "Width",
+    height: "Height",
+    fieldError: (w: number, h: number) =>
+      `Use whole pixels inside the image (${String(w)} × ${String(h)} px), at least 1 × 1.`,
+    selected: (w: number, h: number) => `Selected area: ${String(w)} × ${String(h)} px`,
+    whole: (w: number, h: number) => `Whole image: ${String(w)} × ${String(h)} px (no crop)`,
+    reset: "Reset",
+    cancel: "Cancel",
+    apply: "Apply crop",
+    aria: {
+      cropArea: "Crop selection. Use the arrow keys to move it.",
+      nwDragHandle: "Top-left corner. Arrow keys resize.",
+      nDragHandle: "Top edge. Arrow keys resize.",
+      neDragHandle: "Top-right corner. Arrow keys resize.",
+      eDragHandle: "Right edge. Arrow keys resize.",
+      seDragHandle: "Bottom-right corner. Arrow keys resize.",
+      sDragHandle: "Bottom edge. Arrow keys resize.",
+      swDragHandle: "Bottom-left corner. Arrow keys resize.",
+      wDragHandle: "Left edge. Arrow keys resize.",
+    },
+    imageLabel: "Image to crop",
   },
   formats: {
     jpeg: "JPEG",
@@ -146,6 +202,27 @@ export const strings = {
       "Leave empty for no minimum. A higher minimum keeps more detail but may not fit the size.",
     minQualityError: "Enter a whole number from 1 to 100, or leave it empty.",
     allowDimensions: "Allow smaller dimensions if the size can't be reached otherwise",
+    minSizeLegend: "Not smaller than (optional)",
+    minSizeHelp: "Leave a field empty for no minimum on that side.",
+    minWidth: "Minimum width (px)",
+    minHeight: "Minimum height (px)",
+    minSizeErrors: {
+      invalid: "Enter whole pixels (1 or more), or leave the field empty.",
+      too_large: "The minimum can't be larger than the output size.",
+    },
+    resizeLegend: "Output size",
+    resizeWidth: "Width (px)",
+    resizeHeight: "Height (px)",
+    keepAspect: "Keep aspect ratio",
+    resizeHelp: (w: number, h: number) =>
+      `Leave empty to keep ${String(w)} × ${String(h)} px. Images are never enlarged.`,
+    resizeErrors: {
+      invalid: "Enter whole pixels (1 or more) for both sides, or turn on Keep aspect ratio.",
+      too_large: (w: number, h: number) =>
+        `The output can't be larger than ${String(w)} × ${String(h)} px (images are never enlarged).`,
+    },
+    resizeExact: (w: number, h: number) =>
+      `${String(w)} × ${String(h)} px, set by Exact size in Crop and rotate.`,
     allowColors: "Allow colour reduction",
     summaryHeading: "Summary",
     summary: {
@@ -155,8 +232,13 @@ export const strings = {
       format: (format: string) => `Format: ${format}`,
       transparencyKept: "Transparency kept",
       transparencyFilled: (colour: string) => `Transparent areas filled with ${colour}`,
+      cropped: (w: number, h: number) => `Cropped to ${String(w)} × ${String(h)} px`,
+      notCropped: "Not cropped",
+      rotated: (deg: number) => `Rotated ${String(deg)}°`,
+      output: (w: number, h: number) => `Output ${String(w)} × ${String(h)} px`,
       dimensionsKept: "Dimensions unchanged",
-      dimensionsMayShrink: "Dimensions may be reduced if needed",
+      dimensionsMayShrink: "Dimensions may be reduced further if needed",
+      notBelow: (w: number, h: number) => `Not smaller than ${String(w)} × ${String(h)} px`,
       colorsMayReduce: "Colours may be reduced",
       minQuality: (q: number) => `Minimum quality ${String(q)}`,
     },

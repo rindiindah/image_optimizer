@@ -1,4 +1,4 @@
-import { defaultSettings } from "../../../src/features/settings/settings";
+import { defaultEdits, defaultSettings } from "../../../src/features/settings/settings";
 import type { ImageMetadata, QueueItem } from "../../../src/types/image";
 
 /** A ready image in the list, with default settings (as the store makes it). */
@@ -33,6 +33,7 @@ export function readyItem(
     previewUrl: `blob:preview-${id}`,
     error: null,
     settings: defaultSettings(metadata),
+    edits: defaultEdits(),
     job: { status: "idle" },
     result: null,
     ...patch,

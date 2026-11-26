@@ -3,7 +3,12 @@
  * Privacy: messages never carry file names, and errors carry only a code.
  */
 import type { Progress } from "../engine/optimize";
-import type { OptimizationResult, OptimizeSettings, OutputFormat } from "../types/engine";
+import type {
+  ImageEdits,
+  OptimizationResult,
+  OptimizeSettings,
+  OutputFormat,
+} from "../types/engine";
 import type { ImageInfo } from "../types/image";
 
 /** "native" forces the browser's encoder (tests, or environments without WASM). */
@@ -30,6 +35,8 @@ export type WorkerRequest =
       file: Blob;
       sourceBytes: number;
       settings: OptimizeSettings;
+      /** Crop/rotate/resize (M4), applied before optimizing. */
+      edits: ImageEdits;
       encoderPreference: EncoderPreference;
     }
   | { type: "capabilities"; jobId: number }

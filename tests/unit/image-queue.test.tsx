@@ -20,6 +20,7 @@ const base = (id: string, name: string): QueueItem => ({
   previewUrl: null,
   error: null,
   settings: null,
+  edits: null,
   job: { status: "idle" },
   result: null,
 });

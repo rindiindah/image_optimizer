@@ -1,10 +1,17 @@
 /**
  * Per-image settings (M3 Q1): defaults for a new image, and the check that turns what the
- * user typed into the engine's `OptimizeSettings`. Pure: no UI, no I/O.
+ * user typed into the engine's `OptimizeSettings` and the output size (M4). Pure: no UI, no I/O.
  */
 import { strings } from "../../content/strings";
-import type { OptimizeSettings, OutputFormat, SizeGoal } from "../../types/engine";
-import type { ImageMetadata, ImageSettings } from "../../types/image";
+import type {
+  Dimensions,
+  ImageEdits,
+  OptimizeSettings,
+  OutputFormat,
+  SizeGoal,
+} from "../../types/engine";
+import type { EditSettings, ImageMetadata, ImageSettings } from "../../types/image";
+import { linkedSide } from "../../utils/edits";
 import { parseSize, type ParseSizeResult } from "../../utils/file-size";
 
 /** Q3: JPEG/PNG/WebP keep their format; anything else → JPEG, or WebP when transparent. */
@@ -26,7 +33,14 @@ export function defaultSettings(meta: Pick<ImageMetadata, "format" | "hasAlpha">
     allowDimensionReduction: false,
     allowColorReduction: false,
     background: null,
+    resize: { width: "", height: "", keepAspect: true },
+    minSize: { width: "", height: "" },
   };
+}
+
+/** No crop, no rotation (M4). */
+export function defaultEdits(): EditSettings {
+  return { crop: null, rotation: 0, ratio: "free", portrait: false, exact: null };
 }
 
 export type SizeError = Exclude<ParseSizeResult, { ok: true }>["reason"];
@@ -38,10 +52,21 @@ export interface SettingsErrors {
   minQuality?: "invalid";
   /** Transparent source → JPEG without a fill colour (never dropped silently). */
   background?: "required";
+  /** Output size: not whole positive pixels, or larger than the edited image (never enlarge). */
+  resize?: "invalid" | "too_large";
+  /** Minimum size for "Allow smaller dimensions": invalid, or larger than the output size. */
+  minSize?: "invalid" | "too_large";
 }
 
 export type SettingsCheck =
-  { ok: true; settings: OptimizeSettings } | { ok: false; errors: SettingsErrors };
+  | { ok: true; settings: OptimizeSettings; outputSize: Dimensions }
+  | { ok: false; errors: SettingsErrors };
+
+/** What the edits leave: the edited size, and an "Exact size" output if one is set. */
+export interface EditFrame {
+  edited: Dimensions;
+  exact: Dimensions | null;
+}
 
 /** "image/jpeg" → "JPEG" (also for an output whose real type differs after a fallback). */
 export const formatName = (mime: string): string =>
@@ -54,7 +79,57 @@ export const hasQuality = (format: OutputFormat): boolean => format !== "image/p
 export const needsBackground = (settings: ImageSettings, hasAlpha: boolean): boolean =>
   hasAlpha && settings.format === "image/jpeg";
 
-export function toOptimizeSettings(settings: ImageSettings, hasAlpha: boolean): SettingsCheck {
+/** "" → null; a whole number ≥ 1 → that number; anything else → NaN. */
+export function parsePixels(text: string): number | null {
+  const t = text.trim();
+  if (t === "") return null;
+  return /^\d+$/.test(t) && Number(t) >= 1 ? Number(t) : Number.NaN;
+}
+
+const fits = (size: Dimensions, within: Dimensions) =>
+  size.width <= within.width && size.height <= within.height;
+
+/**
+ * The output size: an Exact size if set, else the typed resize (with "Keep aspect ratio" a
+ * missing side follows the ratio), else the edited size. Never larger than the edited size.
+ */
+function outputSizeOf(
+  settings: ImageSettings,
+  frame: EditFrame,
+): Dimensions | "invalid" | "too_large" {
+  const { edited, exact } = frame;
+  let size: Dimensions | null;
+  if (exact) size = exact;
+  else {
+    const w = parsePixels(settings.resize.width);
+    const h = parsePixels(settings.resize.height);
+    if (w === null && h === null) size = edited;
+    else if (Number.isNaN(w) || Number.isNaN(h)) size = null;
+    else if (w !== null && h !== null) size = { width: w, height: h };
+    else if (!settings.resize.keepAspect)
+      size = null; // one side only, without the ratio
+    else if (w !== null) size = { width: w, height: linkedSide(w, edited.width, edited.height) };
+    else size = { width: linkedSide(h ?? 1, edited.height, edited.width), height: h ?? 1 };
+  }
+  if (!size) return "invalid";
+  return fits(size, edited) ? size : "too_large";
+}
+
+/** Engine form of the edits for a run. */
+export function toImageEdits(
+  edits: EditSettings,
+  edited: Dimensions,
+  output: Dimensions,
+): ImageEdits {
+  const same = output.width === edited.width && output.height === edited.height;
+  return { crop: edits.crop, rotation: edits.rotation, resize: same ? null : output };
+}
+
+export function toOptimizeSettings(
+  settings: ImageSettings,
+  hasAlpha: boolean,
+  frame: EditFrame,
+): SettingsCheck {
   const errors: SettingsErrors = {};
 
   const size = parseSize(settings.size.text, settings.size.unit);
@@ -83,15 +158,34 @@ export function toOptimizeSettings(settings: ImageSettings, hasAlpha: boolean): 
   const background = needsBackground(settings, hasAlpha) ? settings.background : null;
   if (needsBackground(settings, hasAlpha) && !background) errors.background = "required";
 
-  if (!goal || Object.keys(errors).length > 0) return { ok: false, errors };
+  const output = outputSizeOf(settings, frame);
+  if (typeof output === "string") errors.resize = output;
+
+  let minDimensions: Dimensions | null = null;
+  if (settings.allowDimensionReduction) {
+    const w = parsePixels(settings.minSize.width);
+    const h = parsePixels(settings.minSize.height);
+    if (Number.isNaN(w) || Number.isNaN(h)) errors.minSize = "invalid";
+    else if (w !== null || h !== null) {
+      minDimensions = { width: w ?? 1, height: h ?? 1 };
+      if (typeof output !== "string" && !fits(minDimensions, output)) {
+        errors.minSize = "too_large";
+      }
+    }
+  }
+
+  if (!goal || typeof output === "string" || Object.keys(errors).length > 0) {
+    return { ok: false, errors };
+  }
   return {
     ok: true,
+    outputSize: output,
     settings: {
       goal,
       format: settings.format,
       minQuality,
       allowDimensionReduction: settings.allowDimensionReduction,
-      minDimensions: null, // M4: a minimum width/height comes with resizing
+      minDimensions,
       allowColorReduction: settings.format === "image/png" && settings.allowColorReduction,
       background,
     },

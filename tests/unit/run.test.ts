@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../../src/content/strings";
 import { cancelOptimize, optimizeImage, type Engine } from "../../src/features/process/run";
 import { useQueue } from "../../src/features/queue/store";
-import type { OptimizationResult, OptimizeSettings } from "../../src/types/engine";
+import {
+  NO_EDITS,
+  type ImageEdits,
+  type OptimizationResult,
+  type OptimizeSettings,
+} from "../../src/types/engine";
 import type { QueueItem } from "../../src/types/image";
 import type { ClientOutcome, OptimizeOptions } from "../../src/workers/engine-client";
 
@@ -19,6 +24,7 @@ const item = (id: string): QueueItem => ({
   previewUrl: null,
   error: null,
   settings: null,
+  edits: null,
   job: { status: "idle" },
   result: null,
 });
@@ -92,7 +98,7 @@ beforeEach(() => {
 describe("optimizeImage", () => {
   it("reports progress, then stores the result with its files and goal", async () => {
     const fake = fakeEngine();
-    const run = optimizeImage("a", settings, fake.engine);
+    const run = optimizeImage("a", settings, NO_EDITS, fake.engine);
     expect(get("a")?.job).toEqual({ status: "running", progress: null });
 
     fake.progress()?.({ phase: 1, attempt: 3, maxAttempts: 8 });
@@ -116,10 +122,27 @@ describe("optimizeImage", () => {
     expect(state().announcement).toBe(strings.process.announce.done);
   });
 
+  it("sends the image's edits with the run (M4)", async () => {
+    const fake = fakeEngine();
+    const edits: ImageEdits = {
+      crop: { x: 1, y: 2, width: 3, height: 4 },
+      rotation: 90,
+      resize: { width: 2, height: 1 },
+    };
+    const run = optimizeImage("a", settings, edits, fake.engine);
+    expect(fake.optimize).toHaveBeenCalledWith(
+      get("a")?.file,
+      settings,
+      expect.objectContaining({ edits }),
+    );
+    fake.finish({ status: "cancelled" });
+    await run;
+  });
+
   it("runs one image at a time", async () => {
     const fake = fakeEngine();
-    const run = optimizeImage("a", settings, fake.engine);
-    await optimizeImage("b", settings, fake.engine);
+    const run = optimizeImage("a", settings, NO_EDITS, fake.engine);
+    await optimizeImage("b", settings, NO_EDITS, fake.engine);
     expect(fake.optimize).toHaveBeenCalledTimes(1);
     expect(get("b")?.job).toEqual({ status: "idle" });
     fake.finish({ status: "cancelled" });
@@ -128,7 +151,7 @@ describe("optimizeImage", () => {
 
   it("cancel → back to idle, no result", async () => {
     const fake = fakeEngine();
-    const run = optimizeImage("a", settings, fake.engine);
+    const run = optimizeImage("a", settings, NO_EDITS, fake.engine);
     cancelOptimize();
     await run;
     expect(get("a")?.job).toEqual({ status: "idle" });
@@ -138,7 +161,7 @@ describe("optimizeImage", () => {
 
   it("an engine error is stored as its code", async () => {
     const fake = fakeEngine();
-    const run = optimizeImage("a", settings, fake.engine);
+    const run = optimizeImage("a", settings, NO_EDITS, fake.engine);
     fake.finish({ status: "error", code: "encode_failed" });
     await run;
     expect(get("a")?.job).toEqual({ status: "error", code: "encode_failed" });
@@ -148,20 +171,20 @@ describe("optimizeImage", () => {
 
   it("an engine that throws counts as a crash", async () => {
     const engine: Engine = { optimize: () => Promise.reject(new Error("busy")) };
-    await optimizeImage("a", settings, engine);
+    await optimizeImage("a", settings, NO_EDITS, engine);
     expect(get("a")?.job).toEqual({ status: "error", code: "worker_crashed" });
   });
 
   it("removing the image while it runs stops the work and keeps nothing", async () => {
     const fake = fakeEngine();
-    const run = optimizeImage("a", settings, fake.engine);
+    const run = optimizeImage("a", settings, NO_EDITS, fake.engine);
     state().remove("a");
     await run;
     expect(get("a")).toBeUndefined();
     expect(createUrl).not.toHaveBeenCalled();
     // The next image can run now.
     const next = fakeEngine();
-    const second = optimizeImage("b", settings, next.engine);
+    const second = optimizeImage("b", settings, NO_EDITS, next.engine);
     expect(next.optimize).toHaveBeenCalledTimes(1);
     next.finish({ status: "cancelled" });
     await second;

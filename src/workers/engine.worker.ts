@@ -14,6 +14,7 @@ import {
   quantizeToPng,
 } from "./codecs/wasm-codecs";
 import { MAX_PIXELS } from "../utils/limits";
+import { applyEdits, InvalidEditsError, outputSize } from "./edit";
 import { InspectError, inspectFile } from "./inspect";
 import { DecodeError, decodeImage, encodeNative, hasTransparency } from "./pixels";
 import type { CodecCapability, EngineErrorCode, WorkerRequest, WorkerResponse } from "./protocol";
@@ -46,10 +47,15 @@ async function handleOptimize(
     return;
   }
 
+  let edited: ImageBitmap = bitmap;
   try {
+    // Orient (decode) → crop → rotate; the optimizer starts from the resize size (never larger).
+    const size = outputSize({ width: bitmap.width, height: bitmap.height }, request.edits);
+    edited = applyEdits(bitmap, request.edits);
+
     const baseFlags: Flag[] = highBitDepth ? ["hdr_tone_mapped"] : [];
     let background: string | null = null;
-    if (settings.format === "image/jpeg" && hasTransparency(bitmap)) {
+    if (settings.format === "image/jpeg" && hasTransparency(edited)) {
       // Never drop transparency without asking: the user must choose a background colour.
       if (!settings.background) {
         post({ type: "error", jobId, code: "transparency_needs_decision" });
@@ -60,7 +66,7 @@ async function handleOptimize(
     }
 
     const encoder = createWorkerEncoder({
-      bitmap,
+      bitmap: edited,
       format: settings.format,
       allowColorReduction: settings.allowColorReduction,
       background,
@@ -69,7 +75,7 @@ async function handleOptimize(
 
     const result = await optimize({
       encoder,
-      source: { width: bitmap.width, height: bitmap.height },
+      source: size,
       sourceBytes: request.sourceBytes,
       settings,
       signal: new AbortController().signal, // hard cancel = the client terminates this worker
@@ -85,6 +91,7 @@ async function handleOptimize(
   } catch (error) {
     post({ type: "error", jobId, code: errorCode(error) });
   } finally {
+    if (edited !== bitmap) edited.close();
     bitmap.close();
   }
 }
@@ -108,7 +115,8 @@ async function handleInspect(request: Extract<WorkerRequest, { type: "inspect" }
 }
 
 function errorCode(error: unknown): EngineErrorCode {
-  if (error instanceof InvalidSettingsError) return "invalid_settings";
+  if (error instanceof InvalidSettingsError || error instanceof InvalidEditsError)
+    return "invalid_settings";
   if (error instanceof ImageTooLargeError) return "image_too_large";
   return "encode_failed";
 }

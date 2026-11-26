@@ -7,6 +7,7 @@ import { create } from "zustand";
 import type { Progress } from "../../engine/optimize";
 import type { OptimizationResult, SizeGoal } from "../../types/engine";
 import type {
+  EditSettings,
   ImageErrorCode,
   ImageInfo,
   ImageSettings,
@@ -14,7 +15,7 @@ import type {
   QueueItem,
 } from "../../types/image";
 import type { EngineErrorCode } from "../../workers/protocol";
-import { defaultSettings } from "../settings/settings";
+import { defaultEdits, defaultSettings } from "../settings/settings";
 
 interface QueueState {
   items: QueueItem[];
@@ -31,6 +32,8 @@ interface QueueState {
 
   /** Changes settings; an existing result becomes outdated (product invariant). */
   updateSettings: (id: string, patch: Partial<ImageSettings>) => void;
+  /** Applies crop/rotate edits (M4); an existing result becomes outdated. */
+  updateEdits: (id: string, edits: EditSettings) => void;
   startJob: (id: string) => void;
   setProgress: (id: string, progress: Progress) => void;
   /** Stores a finished run; replaces (and releases) any earlier result. */
@@ -109,6 +112,7 @@ export const useQueue = create<QueueState>()((set, get) => {
         thumbnailUrl,
         previewUrl,
         settings: other.settings ?? defaultSettings(info),
+        edits: other.edits ?? defaultEdits(),
         metadata: {
           ...info,
           name: other.name,
@@ -130,6 +134,13 @@ export const useQueue = create<QueueState>()((set, get) => {
     updateSettings: (id, patch) => {
       update(id, (item) => ({
         settings: item.settings && { ...item.settings, ...patch },
+        result: item.result && !item.result.outdated ? outdate(item.result) : item.result,
+      }));
+    },
+
+    updateEdits: (id, edits) => {
+      update(id, (item) => ({
+        edits,
         result: item.result && !item.result.outdated ? outdate(item.result) : item.result,
       }));
     },

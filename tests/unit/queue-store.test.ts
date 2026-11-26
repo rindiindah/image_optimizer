@@ -20,6 +20,7 @@ function item(id: string, overrides: Partial<QueueItem> = {}): QueueItem {
     previewUrl: null,
     error: null,
     settings: null,
+    edits: null,
     job: { status: "idle" },
     result: null,
     ...overrides,
@@ -188,6 +189,28 @@ describe("settings, jobs and results (M3)", () => {
     state().chooseCandidate("a", 0);
     state().updateSettings("a", { mode: "range" });
     expect(revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("a ready image starts without edits; applying edits marks the result outdated (M4)", () => {
+    expect(state().items[0]?.edits).toEqual({
+      crop: null,
+      rotation: 0,
+      ratio: "free",
+      portrait: false,
+      exact: null,
+    });
+    state().finishJob("a", targetResult, goal, files);
+    const edits = {
+      crop: { x: 0, y: 0, width: 5, height: 5 },
+      rotation: 90 as const,
+      ratio: "1:1" as const,
+      portrait: false,
+      exact: null,
+    };
+    state().updateEdits("a", edits);
+    expect(state().items[0]?.edits).toEqual(edits);
+    expect(state().items[0]?.result?.outdated).toBe(true);
+    expect(state().items[0]?.result?.urls).toEqual(["blob:r2"]); // the chosen one (index 1)
   });
 
   it("removing the image releases its result files too", () => {

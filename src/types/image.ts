@@ -3,7 +3,15 @@
  * may have been refused. Sizes are bytes (decimal units, D4). M3 adds settings, job and result.
  */
 import type { Progress } from "../engine/optimize";
-import type { Mode, OptimizationResult, OutputFormat, SizeGoal } from "./engine";
+import type {
+  Dimensions,
+  Mode,
+  OptimizationResult,
+  OutputFormat,
+  Rect,
+  Rotation,
+  SizeGoal,
+} from "./engine";
 import type { SizeUnit } from "../utils/file-size";
 import type { EngineErrorCode } from "../workers/protocol";
 
@@ -90,6 +98,25 @@ export interface ImageSettings {
   allowColorReduction: boolean;
   /** JPEG with a transparent source: the fill colour the user chose; null = not chosen yet. */
   background: string | null;
+  /** Output size as typed (M4); both empty = keep the edited size. */
+  resize: { width: string; height: string; keepAspect: boolean };
+  /** "Allow smaller dimensions": never below this (as typed; empty = no minimum). */
+  minSize: { width: string; height: string };
+}
+
+/** Crop editor presets (blueprint 5.3, M4 Q3/Q4). */
+export type RatioPreset = "free" | "original" | "1:1" | "4:3" | "3:2" | "16:9" | "exact";
+
+/** What the user applied in the crop editor (M4). Engine form: `ImageEdits`. */
+export interface EditSettings {
+  /** In source pixels after orientation, before rotation; null = whole image. */
+  crop: Rect | null;
+  rotation: Rotation;
+  ratio: RatioPreset;
+  /** 4:3 → 3:4 etc. (Q4). */
+  portrait: boolean;
+  /** "Exact size" (Q3): the output is exactly this size; the crop keeps its ratio. */
+  exact: Dimensions | null;
 }
 
 export type ItemJob =
@@ -133,6 +160,8 @@ export interface QueueItem {
   error: ImageErrorCode | null;
   /** Set (to the defaults) when the image becomes ready. */
   settings: ImageSettings | null;
+  /** Set (no edits) when the image becomes ready. */
+  edits: EditSettings | null;
   job: ItemJob;
   result: ItemResult | null;
 }

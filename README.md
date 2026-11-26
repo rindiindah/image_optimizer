@@ -4,9 +4,9 @@ A browser-only image optimizer where **you choose the output file size**. Upload
 crop, resize, convert, compare and download them. Every step runs in your browser:
 **your images are never uploaded**.
 
-> **Status:** early development. You can add images (including HEIC), set a maximum,
-> range or target file size, optimize one image at a time to JPEG, PNG or WebP, and
-> download the result. Cropping, resizing, comparison views and batch download are still
+> **Status:** early development. You can add images (including HEIC), crop, rotate and
+> resize them, set a maximum, range or target file size, optimize one image at a time to
+> JPEG, PNG or WebP, and download the result. Comparison views and batch download are still
 > being built.
 
 ## Requirements

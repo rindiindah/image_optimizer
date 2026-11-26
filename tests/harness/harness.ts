@@ -4,6 +4,7 @@
  */
 import { EngineClient } from "../../src/workers/engine-client";
 import type {
+  CropCheckReport,
   EngineHarness,
   HarnessReport,
   HarnessRun,
@@ -11,6 +12,7 @@ import type {
   HarnessPicture,
   HeicSpikeReport,
   InspectReport,
+  PixelsReport,
 } from "./types";
 
 /** A photo-like test image: smooth gradients plus fine noise (compresses like a photo, not a flat graphic). */
@@ -25,6 +27,28 @@ async function generate(source: Extract<HarnessSource, { kind: "generated" }>): 
     return canvas.convertToBlob({ type: source.type, quality: 0.95 });
   }
   if (pattern === "empty") return canvas.convertToBlob({ type: source.type }); // untouched: all zero
+  if (pattern === "quadrants") {
+    const halfW = Math.floor(source.width / 2);
+    const halfH = Math.floor(source.height / 2);
+    const fill = (colour: string, x: number, y: number, w: number, h: number) => {
+      context.fillStyle = colour;
+      context.fillRect(x, y, w, h);
+    };
+    fill("#ff0000", 0, 0, halfW, halfH);
+    fill("#00ff00", halfW, 0, source.width - halfW, halfH);
+    fill("#0000ff", 0, halfH, halfW, source.height - halfH);
+    fill("#ffffff", halfW, halfH, source.width - halfW, source.height - halfH);
+    return canvas.convertToBlob({ type: source.type, quality: 0.95 });
+  }
+  if (pattern === "coords") {
+    const image = context.createImageData(source.width, source.height);
+    for (let y = 0; y < source.height; y += 1) {
+      for (let x = 0; x < source.width; x += 1)
+        image.data.set(coordColour(x, y), (y * source.width + x) * 4);
+    }
+    context.putImageData(image, 0, 0);
+    return canvas.convertToBlob({ type: "image/png" }); // lossless, so every pixel survives
+  }
   const image = context.createImageData(source.width, source.height);
   const { data } = image;
   let seed = 12345;
@@ -58,7 +82,24 @@ async function sourceBlob(source: HarnessSource): Promise<Blob> {
   return response.blob();
 }
 
+/** The colour of pixel (x, y) in a "coords" image: unique for images up to 4096 × 4096. */
+function coordColour(x: number, y: number): [number, number, number, number] {
+  return [x & 255, y & 255, ((x >> 8) & 15) | (((y >> 8) & 15) << 4), 255];
+}
+
+async function decodePixels(blob: Blob): Promise<ImageData> {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("no 2d context");
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
 const client = new EngineClient();
+/** Output files of the last run, for the pixel checks. */
+let lastFiles: Blob[] = [];
 
 async function run(spec: HarnessRun): Promise<HarnessReport> {
   return runFile(await sourceBlob(spec.source), spec);
@@ -94,7 +135,9 @@ async function runFile(blob: Blob, spec: HarnessRun): Promise<HarnessReport> {
   const started = performance.now();
   const outcome = await client.optimize(blob, spec.settings, {
     encoderPreference: spec.encoderPreference ?? "wasm",
+    ...(spec.edits ? { edits: spec.edits } : {}),
   });
+  lastFiles = outcome.status === "done" ? outcome.files : [];
   const ms = Math.round(performance.now() - started);
   const base = { sourceBytes: blob.size, sourceWidth: width, sourceHeight: height, ms };
 
@@ -171,8 +214,64 @@ async function bytesOf(source: HarnessSource): Promise<number[]> {
   return [...new Uint8Array(await (await sourceBlob(source)).arrayBuffer())];
 }
 
+async function cropCheck(spec: HarnessRun): Promise<CropCheckReport> {
+  if (spec.source.kind !== "generated") throw new Error("cropCheck needs a generated source");
+  const sourceSize = { width: spec.source.width, height: spec.source.height };
+  const report = await run({ ...spec, source: { ...spec.source, pattern: "coords" } });
+  const file = lastFiles[0];
+  if (!file) return { report, width: 0, height: 0, mismatches: -1 };
+  const out = await decodePixels(file);
+  const crop = spec.edits?.crop ?? { x: 0, y: 0, ...sourceSize };
+  const rotation = spec.edits?.rotation ?? 0;
+  const cw = crop.width;
+  const ch = crop.height;
+  let mismatches = 0;
+  let firstMismatch: CropCheckReport["firstMismatch"];
+  for (let Y = 0; Y < out.height; Y += 1) {
+    for (let X = 0; X < out.width; X += 1) {
+      // Where output pixel (X, Y) comes from inside the crop: the inverse of the rotation.
+      const [u, v] =
+        rotation === 90
+          ? [Y, ch - 1 - X]
+          : rotation === 180
+            ? [cw - 1 - X, ch - 1 - Y]
+            : rotation === 270
+              ? [cw - 1 - Y, X]
+              : [X, Y];
+      const expected = coordColour(crop.x + u, crop.y + v);
+      const i = (Y * out.width + X) * 4;
+      const got = [...out.data.subarray(i, i + 4)];
+      if (got.some((value, k) => value !== expected[k])) {
+        mismatches += 1;
+        firstMismatch ??= { x: X, y: Y, got, expected };
+      }
+    }
+  }
+  return {
+    report,
+    width: out.width,
+    height: out.height,
+    mismatches,
+    ...(firstMismatch ? { firstMismatch } : {}),
+  };
+}
+
+async function runPixels(spec: HarnessRun, points: [number, number][]): Promise<PixelsReport> {
+  const report = await run(spec);
+  const file = lastFiles[0];
+  if (!file) return { report, width: 0, height: 0, colours: [] };
+  const out = await decodePixels(file);
+  const colours = points.map(([x, y]) => {
+    const i = (y * out.width + x) * 4;
+    return [...out.data.subarray(i, i + 4)];
+  });
+  return { report, width: out.width, height: out.height, colours };
+}
+
 window.engineHarness = {
   run,
+  cropCheck,
+  runPixels,
   runBlob,
   capabilities: () => client.capabilities(),
   heicSpike,

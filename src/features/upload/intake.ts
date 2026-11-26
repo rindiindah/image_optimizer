@@ -25,6 +25,7 @@ export async function checkFile(file: File, id: string): Promise<QueueItem> {
     thumbnailUrl: null,
     previewUrl: null,
     settings: null,
+    edits: null,
     job: { status: "idle" } as const,
     result: null,
   };

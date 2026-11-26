@@ -4,7 +4,12 @@
  * cancelled job can never report success; a fresh worker is started for the next job.
  */
 import type { Progress } from "../engine/optimize";
-import type { OptimizationResult, OptimizeSettings } from "../types/engine";
+import {
+  NO_EDITS,
+  type ImageEdits,
+  type OptimizationResult,
+  type OptimizeSettings,
+} from "../types/engine";
 import type { ImageInfo } from "../types/image";
 import type {
   CodecCapability,
@@ -29,6 +34,8 @@ export interface OptimizeOptions {
   onProgress?: (progress: Progress) => void;
   /** "native" forces the browser encoder (tests / environments without WASM). */
   encoderPreference?: EncoderPreference;
+  /** Crop/rotate/resize (M4); none by default. */
+  edits?: ImageEdits;
 }
 
 export class EngineClient {
@@ -104,6 +111,7 @@ export class EngineClient {
       file,
       sourceBytes: file.size,
       settings,
+      edits: options.edits ?? NO_EDITS,
       encoderPreference: options.encoderPreference ?? "wasm",
     };
     return this.#run<ClientOutcome>(

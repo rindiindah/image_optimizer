@@ -69,15 +69,130 @@ describe("settings panel", () => {
     expect(screen.getByText(s.summary.format("JPEG"))).toBeTruthy();
     expect(screen.getByText(s.summary.dimensionsKept)).toBeTruthy();
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenCalledWith("a", {
-      goal: { mode: "maximum", maxBytes: 500_000 },
-      format: "image/jpeg",
-      minQuality: null,
-      allowDimensionReduction: false,
-      minDimensions: null,
-      allowColorReduction: false,
-      background: null,
+    expect(run.optimizeImage).toHaveBeenCalledWith(
+      "a",
+      {
+        goal: { mode: "maximum", maxBytes: 500_000 },
+        format: "image/jpeg",
+        minQuality: null,
+        allowDimensionReduction: false,
+        minDimensions: null,
+        allowColorReduction: false,
+        background: null,
+      },
+      { crop: null, rotation: 0, resize: null },
+    );
+  });
+
+  it("output size: keep aspect ratio fills the other side; never above the image (M4)", () => {
+    state().add([readyItem("a", "photo.jpg")]); // 4000 × 3000
+    render(<App />);
+    type(sizeInput(), "500");
+    const width = screen.getByLabelText(s.resizeWidth);
+    const height = screen.getByLabelText(s.resizeHeight);
+    expect(width.getAttribute("placeholder")).toBe("4000");
+    type(width, "1000");
+    expect(height).toHaveProperty("value", "750");
+    expect(screen.getByText(s.summary.output(1000, 750))).toBeTruthy();
+    fireEvent.click(optimize());
+    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+      crop: null,
+      rotation: 0,
+      resize: { width: 1000, height: 750 },
     });
+
+    type(width, "5000");
+    expect(screen.getByText(s.resizeErrors.too_large(4000, 3000))).toBeTruthy();
+    expect(optimize()).toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByLabelText(s.keepAspect));
+    type(width, "800");
+    expect(height).toHaveProperty("value", "3750"); // unchanged without the link: too large
+    type(height, "100");
+    expect(screen.getByText(s.summary.output(800, 100))).toBeTruthy();
+  });
+
+  it("crop and rotation are summarised and sent with the run, in source pixels (M4)", () => {
+    state().add([
+      readyItem(
+        "a",
+        "photo.jpg",
+        {},
+        {
+          edits: {
+            crop: { x: 100, y: 200, width: 1200, height: 900 },
+            rotation: 90,
+            ratio: "free",
+            portrait: false,
+            exact: null,
+          },
+        },
+      ),
+    ]);
+    render(<App />);
+    type(sizeInput(), "500");
+    expect(screen.getByText(s.summary.cropped(1200, 900))).toBeTruthy();
+    expect(screen.getByText(s.summary.rotated(90))).toBeTruthy();
+    expect(screen.getByText(s.summary.output(900, 1200))).toBeTruthy();
+    expect(screen.getByLabelText(s.resizeWidth).getAttribute("placeholder")).toBe("900");
+    fireEvent.click(optimize());
+    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+      crop: { x: 100, y: 200, width: 1200, height: 900 },
+      rotation: 90,
+      resize: null,
+    });
+  });
+
+  it("Exact size sets the output size; the resize fields give way to it (M4 Q3)", () => {
+    state().add([
+      readyItem(
+        "a",
+        "photo.jpg",
+        {},
+        {
+          edits: {
+            crop: { x: 0, y: 0, width: 1200, height: 1600 },
+            rotation: 0,
+            ratio: "exact",
+            portrait: false,
+            exact: { width: 600, height: 800 },
+          },
+        },
+      ),
+    ]);
+    render(<App />);
+    type(sizeInput(), "500");
+    expect(screen.queryByLabelText(s.resizeWidth)).toBeNull();
+    expect(screen.getByText(s.resizeExact(600, 800))).toBeTruthy();
+    fireEvent.click(optimize());
+    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+      crop: { x: 0, y: 0, width: 1200, height: 1600 },
+      rotation: 0,
+      resize: { width: 600, height: 800 },
+    });
+  });
+
+  it("minimum size appears with 'Allow smaller dimensions' and goes to the engine (M4 Q6)", () => {
+    state().add([readyItem("a", "photo.jpg")]);
+    render(<App />);
+    type(sizeInput(), "500");
+    expect(screen.queryByLabelText(s.minWidth)).toBeNull();
+    fireEvent.click(screen.getByLabelText(s.allowDimensions));
+    type(screen.getByLabelText(s.minWidth), "800");
+    type(screen.getByLabelText(s.minHeight), "600");
+    expect(screen.getByText(s.summary.notBelow(800, 600))).toBeTruthy();
+    fireEvent.click(optimize());
+    expect(run.optimizeImage).toHaveBeenLastCalledWith(
+      "a",
+      expect.objectContaining({
+        allowDimensionReduction: true,
+        minDimensions: { width: 800, height: 600 },
+      }),
+      expect.anything(),
+    );
+    type(screen.getByLabelText(s.minWidth), "5000");
+    expect(screen.getByText(s.minSizeErrors.too_large)).toBeTruthy();
+    expect(optimize()).toHaveProperty("disabled", true);
   });
 
   it("Range shows a minimum and checks min < max", () => {

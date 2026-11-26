@@ -69,3 +69,19 @@
     }
   }
 }
+
+/*
+ * Crop editor (react-image-crop, M4): larger handles (bigger still on touch screens), our focus
+ * colour, and a solid outline plus a dark border, so the selection never depends on colour alone.
+ */
+.crop-editor .ReactCrop {
+  --rc-drag-handle-size: 16px;
+  --rc-drag-handle-mobile-size: 32px;
+  --rc-drag-handle-bg-colour: rgb(0 0 0 / 0.5);
+  --rc-border-color: rgb(255 255 255 / 0.9);
+  --rc-focus-color: var(--color-focus);
+}
+
+.crop-editor .ReactCrop__crop-selection {
+  outline: 1px solid rgb(0 0 0 / 0.7);
+}

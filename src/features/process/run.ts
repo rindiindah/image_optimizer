@@ -1,5 +1,5 @@
 /**
- * Runs one image through the engine (M3). Uses its own EngineClient, separate from the one
+ * Runs one image through the engine (M3), with its crop/rotate/resize edits (M4). Uses its own EngineClient, separate from the one
  * that reads added files, so adding images keeps working while one is being optimized.
  * One image at a time (Q7). Cancel terminates the worker: a cancelled job never shows a result.
  */
@@ -8,7 +8,7 @@ import {
   type ClientOutcome,
   type OptimizeOptions,
 } from "../../workers/engine-client";
-import type { OptimizeSettings } from "../../types/engine";
+import { NO_EDITS, type ImageEdits, type OptimizeSettings } from "../../types/engine";
 import { strings } from "../../content/strings";
 import { useQueue } from "../queue/store";
 
@@ -26,6 +26,7 @@ let current: { id: string; controller: AbortController } | null = null;
 export async function optimizeImage(
   id: string,
   settings: OptimizeSettings,
+  edits: ImageEdits = NO_EDITS,
   engine: Engine = (defaultEngine ??= new EngineClient()),
 ): Promise<void> {
   const item = useQueue.getState().items.find((other) => other.id === id);
@@ -42,6 +43,7 @@ export async function optimizeImage(
   try {
     const outcome = await engine.optimize(item.file, settings, {
       signal: controller.signal,
+      edits,
       onProgress: (progress) => {
         useQueue.getState().setProgress(id, progress);
       },

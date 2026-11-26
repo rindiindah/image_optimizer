@@ -86,6 +86,7 @@ describe("addFiles (limit of 50; files are never skipped silently)", () => {
       previewUrl: null,
       error: "decode_failed",
       settings: null,
+      edits: null,
       job: { status: "idle" },
       result: null,
     }));

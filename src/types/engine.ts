@@ -64,6 +64,31 @@ export interface Dimensions {
   height: number;
 }
 
+/** A rectangle in whole pixels. */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Clockwise, in 90° steps (free angles are deferred, 07). */
+export type Rotation = 0 | 90 | 180 | 270;
+
+/**
+ * The user's edits (M4), applied in the worker in this order (04): orient (decode) → crop →
+ * rotate → resize. The original file is never changed.
+ */
+export interface ImageEdits {
+  /** In source pixels after orientation (as displayed), before rotation. null = whole image. */
+  crop: Rect | null;
+  rotation: Rotation;
+  /** Output size after crop + rotate; never larger than that. null = keep the size. */
+  resize: Dimensions | null;
+}
+
+export const NO_EDITS: ImageEdits = { crop: null, rotation: 0, resize: null };
+
 export interface OptimizeSettings {
   goal: SizeGoal;
   format: OutputFormat;

@@ -1,5 +1,5 @@
 /** Types shared by the harness page and the Playwright tests (no runtime imports). */
-import type { OptimizationResult, OptimizeSettings } from "../../src/types/engine";
+import type { ImageEdits, OptimizationResult, OptimizeSettings } from "../../src/types/engine";
 import type { ImageInfo } from "../../src/types/image";
 import type { EncoderPreference } from "../../src/workers/protocol";
 
@@ -13,8 +13,12 @@ export type HarnessSource =
       height: number;
       transparent: boolean;
       type: "image/png" | "image/jpeg" | "image/webp";
-      /** "photo" (default): gradients + noise · "flat": one colour (fast, tiny file) · "empty": every pixel transparent black. */
-      pattern?: "photo" | "flat" | "empty";
+      /**
+       * "photo" (default): gradients + noise · "flat": one colour (fast, tiny file) · "empty": every
+       * pixel transparent black · "coords": every pixel encodes its own (x, y), see `coordColour`
+       * · "quadrants": four flat colours (red, green, blue, white), survives JPEG.
+       */
+      pattern?: "photo" | "flat" | "empty" | "coords" | "quadrants";
     };
 
 export interface HarnessPicture {
@@ -38,6 +42,24 @@ export interface HarnessRun {
   source: HarnessSource;
   settings: OptimizeSettings;
   encoderPreference?: EncoderPreference;
+  edits?: ImageEdits;
+}
+
+/** M4 exit check: every output pixel compared with the source pixel it must come from. */
+export interface CropCheckReport {
+  report: HarnessReport;
+  width: number;
+  height: number;
+  mismatches: number;
+  firstMismatch?: { x: number; y: number; got: number[]; expected: number[] };
+}
+
+/** Output pixels read back at given points (for lossy formats: compare with a tolerance). */
+export interface PixelsReport {
+  report: HarnessReport;
+  width: number;
+  height: number;
+  colours: number[][];
 }
 
 export interface HarnessFile {
@@ -81,6 +103,10 @@ export interface EngineHarness {
   /** The bytes of a source (e.g. a generated JPEG, to add an EXIF tag in the test). */
   bytesOf: (source: HarnessSource) => Promise<number[]>;
   run: (spec: HarnessRun) => Promise<HarnessReport>;
+  /** Runs a "coords" image (must be lossless PNG settings) and checks every output pixel. */
+  cropCheck: (spec: HarnessRun) => Promise<CropCheckReport>;
+  /** Runs, decodes the output and returns its pixels at `points` ([x, y] in output pixels). */
+  runPixels: (spec: HarnessRun, points: [number, number][]) => Promise<PixelsReport>;
   /** Runs a given file with Maximum 100 KB JPEG settings (no test-image generation needed). */
   runBlob: (blob: Blob) => Promise<HarnessReport>;
   capabilities: () => Promise<unknown>;
