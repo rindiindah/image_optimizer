@@ -44,6 +44,25 @@ export default defineConfig([
     languageOptions: { globals: globals.node },
   },
   {
+    files: ["tests/e2e/**/*.ts"],
+    ignores: ["tests/e2e/fixtures.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "MemberExpression[property.name=/^all(TextContents|InnerTexts)$/]",
+          message:
+            "Crashes Playwright's Firefox on role-scoped locators (2026-11-26, docs/Plan.md); use evaluateAll((els) => els.map((e) => e.textContent)).",
+        },
+        {
+          selector:
+            "ImportDeclaration[source.value='@playwright/test'] ImportSpecifier[imported.name=/^(test|expect)$/]",
+          message: "Import test/expect from ./fixtures (it adds the page-crash guard).",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.js"],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },

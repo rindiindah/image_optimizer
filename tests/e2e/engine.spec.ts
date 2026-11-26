@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { HARNESS_PORT } from "../../playwright.config";
 import type { EngineHarness, HarnessReport, HarnessRun } from "../harness/types";
 import type { OptimizeSettings, SizeGoal } from "../../src/types/engine";

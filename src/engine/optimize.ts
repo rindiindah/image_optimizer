@@ -22,7 +22,6 @@ import {
   fitsMaximum,
   fitsRange,
   isValidRange,
-  metTolerance,
   pickTargetCandidates,
 } from "./policy";
 
@@ -108,6 +107,15 @@ function validate(settings: OptimizeSettings, source: Dimensions): void {
   if (!(source.width >= 1 && source.height >= 1)) throw new InvalidSettingsError("source");
 }
 
+/**
+ * Maximum/Range: a file this close under the limit ends the search early (more encodes would
+ * barely change quality). A search setting only, never what is reported (D20, owner Q-A):
+ * it keeps the pre-D20 margin, max(2%, 5,000 B), so search speed is unchanged.
+ */
+export function stopMargin(limitBytes: number): number {
+  return Math.max(0.02 * limitBytes, 5_000);
+}
+
 /** The size the quality search brackets: the limit (Maximum/Range) or the target. */
 function thresholdOf(settings: OptimizeSettings): number {
   const { goal } = settings;
@@ -184,7 +192,7 @@ export async function optimize<P>(input: OptimizeInput<P>): Promise<EngineResult
       if (
         settings.goal.mode !== "target" &&
         lowFit &&
-        lowFit.out.bytes >= threshold - metTolerance(threshold)
+        lowFit.out.bytes >= threshold - stopMargin(threshold)
       ) {
         break; // close enough under the limit; more encodes would barely change quality
       }

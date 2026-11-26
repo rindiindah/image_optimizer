@@ -1,12 +1,12 @@
 /**
- * Pure size rules (no I/O). Decisions: D5 (met tolerance), "close" = 10%, D13, D14.
- * All values are bytes.
+ * Pure size rules (no I/O). Decisions: D20 (met tolerance and display band, replacing D5's
+ * formula), "close" = 10%, D13, D14. All values are bytes.
  */
 import type { CandidateOutcome } from "../types/engine";
 
-/** D5: |actual − target| ≤ max(2% of target, 5,000 B) counts as "met". */
+/** D20: |actual − target| ≤ 2% of the target counts as "met", at every target size. */
 export function metTolerance(targetBytes: number): number {
-  return Math.max(0.02 * targetBytes, 5_000);
+  return 0.02 * targetBytes;
 }
 
 /** "Close" threshold (confirmed 2026-11-18): within 10% of the target. */
@@ -15,11 +15,11 @@ export function closeBand(targetBytes: number): number {
 }
 
 /**
- * D14 display band: max(10% of target, 5,000 B).
- * The 5,000 B floor keeps "met" results visible for targets under 50 KB.
+ * D14 display band, 10% of the target (D20). It used to have a 5,000 B floor, needed only
+ * while the "met" tolerance could be wider than 10%.
  */
 export function displayBand(targetBytes: number): number {
-  return Math.max(closeBand(targetBytes), 5_000);
+  return closeBand(targetBytes);
 }
 
 export function classifyTarget(bytes: number, targetBytes: number): CandidateOutcome {

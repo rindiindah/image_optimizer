@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { strings } from "../../src/content/strings";
 
 declare global {
@@ -41,7 +41,7 @@ test("serves the empty workspace with the production security headers", async ({
   ).toBeVisible();
   await expect(page.getByText(strings.workspace.notYetAvailable)).toBeVisible();
   await expect(page.getByRole("contentinfo")).toContainText(strings.footer.licence);
-  // Only the working upload control; nothing for compression yet (M3).
+  // The empty page has only the upload control; settings appear once an image is ready.
   await expect(page.getByRole("button")).toHaveCount(1);
   await expect(page.getByRole("button", { name: strings.upload.chooseButton })).toBeVisible();
 

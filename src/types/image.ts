@@ -1,7 +1,11 @@
 /**
  * Input image types (M2): what a file turned out to be, what we show about it, and why it
- * may have been refused. Sizes are bytes (decimal units, D4).
+ * may have been refused. Sizes are bytes (decimal units, D4). M3 adds settings, job and result.
  */
+import type { Progress } from "../engine/optimize";
+import type { Mode, OptimizationResult, OutputFormat, SizeGoal } from "./engine";
+import type { SizeUnit } from "../utils/file-size";
+import type { EngineErrorCode } from "../workers/protocol";
 
 /** Formats accepted as input. HEIF files with HEVC images count as "heic". */
 export type InputFormat = "jpeg" | "png" | "webp" | "gif" | "bmp" | "avif" | "heic";
@@ -62,6 +66,51 @@ export type ImageErrorCode =
   /** The worker stopped while reading (e.g. the browser ran out of memory). */
   | "worker_crashed";
 
+/** A size as the user typed it (validated by `parseSize`, D16). */
+export interface SizeField {
+  text: string;
+  unit: SizeUnit;
+}
+
+/**
+ * What the user chose for one image (M3 Q1: per image), kept as typed so the form can show it.
+ * `toOptimizeSettings` (features/settings/settings.ts) turns it into the engine's settings.
+ */
+export interface ImageSettings {
+  mode: Mode;
+  /** Maximum: the limit · Range: the maximum · Target: the target. */
+  size: SizeField;
+  /** Range only: the minimum. */
+  min: SizeField;
+  format: OutputFormat;
+  /** "" = no minimum quality. JPEG/WebP only. */
+  minQuality: string;
+  allowDimensionReduction: boolean;
+  /** PNG only. Off by default (product invariant). */
+  allowColorReduction: boolean;
+  /** JPEG with a transparent source: the fill colour the user chose; null = not chosen yet. */
+  background: string | null;
+}
+
+export type ItemJob =
+  | { status: "idle" }
+  | { status: "running"; progress: Progress | null }
+  /** The last run failed with this engine code. */
+  | { status: "error"; code: EngineErrorCode };
+
+/** A finished run. Owns one object URL per candidate file; the store revokes them. */
+export interface ItemResult {
+  result: OptimizationResult;
+  /** The size goal the run used (the settings on screen may have changed since). */
+  goal: SizeGoal;
+  files: Blob[];
+  urls: string[];
+  /** Index into `result.candidates` the user chose; null when there's no output file. */
+  selected: number | null;
+  /** A setting changed after the run: shown, but not downloadable (M3 Q8). */
+  outdated: boolean;
+}
+
 /** One entry in the image list. The original `file` is never changed (product invariant). */
 export interface QueueItem {
   /** Stable for the item's lifetime; never derived from the name. */
@@ -82,4 +131,8 @@ export interface QueueItem {
   previewUrl: string | null;
   /** Set when `status` is "error". */
   error: ImageErrorCode | null;
+  /** Set (to the defaults) when the image becomes ready. */
+  settings: ImageSettings | null;
+  job: ItemJob;
+  result: ItemResult | null;
 }

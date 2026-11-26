@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useQueue } from "../../src/features/queue/store";
+import type { Candidate, OptimizationResult } from "../../src/types/engine";
 import type { ImageInfo, QueueItem } from "../../src/types/image";
 
 const revoke = vi.fn();
+const createUrl = vi.fn<(blob: Blob) => string>();
 
 function item(id: string, overrides: Partial<QueueItem> = {}): QueueItem {
   return {
@@ -17,6 +19,9 @@ function item(id: string, overrides: Partial<QueueItem> = {}): QueueItem {
     thumbnailUrl: null,
     previewUrl: null,
     error: null,
+    settings: null,
+    job: { status: "idle" },
+    result: null,
     ...overrides,
   };
 }
@@ -112,5 +117,102 @@ describe("image list store", () => {
     state().add([item("a"), item("b")]);
     state().remove("b");
     expect(state().selectedId).toBe("a");
+  });
+});
+
+describe("settings, jobs and results (M3)", () => {
+  const candidate = (side: "below" | "above", bytes: number): Candidate => ({
+    side,
+    bytes,
+    mime: "image/jpeg",
+    width: 10,
+    height: 10,
+    quality: 70,
+    outcome: "close",
+    flags: [],
+  });
+  const targetResult: OptimizationResult = {
+    mode: "target",
+    outcome: "close",
+    candidates: [candidate("below", 95_000), candidate("above", 104_000)],
+    selected: 1,
+    closest: null,
+    attempts: 5,
+  };
+  const goal = { mode: "target" as const, targetBytes: 100_000 };
+  const files = [new Blob(["below"]), new Blob(["above"])];
+
+  beforeEach(() => {
+    let n = 0;
+    createUrl.mockReset().mockImplementation(() => `blob:r${String(++n)}`);
+    URL.createObjectURL = createUrl;
+    state().add([item("a")]);
+    state().setReady("a", { ...info, format: "png", hasAlpha: true }, "blob:t", "blob:p");
+  });
+
+  it("a ready image gets default settings from its format and transparency", () => {
+    expect(state().items[0]?.settings).toMatchObject({ mode: "maximum", format: "image/png" });
+  });
+
+  it("finishing a job stores the files with one URL each; re-running releases the old ones", () => {
+    state().startJob("a");
+    state().finishJob("a", targetResult, goal, files);
+    expect(state().items[0]?.result).toMatchObject({ urls: ["blob:r1", "blob:r2"], selected: 1 });
+    expect(state().items[0]?.job).toEqual({ status: "idle" });
+
+    state().finishJob("a", targetResult, goal, files);
+    expect(revoke).toHaveBeenCalledWith("blob:r1");
+    expect(revoke).toHaveBeenCalledWith("blob:r2");
+  });
+
+  it("the user can switch candidates while the result is current", () => {
+    state().finishJob("a", targetResult, goal, files);
+    state().chooseCandidate("a", 0);
+    expect(state().items[0]?.result?.selected).toBe(0);
+    state().chooseCandidate("a", 5);
+    expect(state().items[0]?.result?.selected).toBe(0);
+  });
+
+  it("changing a setting marks the result outdated and keeps only the chosen file (D14)", () => {
+    state().finishJob("a", targetResult, goal, files);
+    state().chooseCandidate("a", 0);
+    state().updateSettings("a", { mode: "maximum" });
+    const result = state().items[0]?.result;
+    expect(state().items[0]?.settings?.mode).toBe("maximum");
+    expect(result).toMatchObject({ outdated: true, selected: 0, urls: ["blob:r1"] });
+    expect(result?.files).toEqual([files[0]]);
+    expect(result?.result.candidates).toEqual([targetResult.candidates[0]]);
+    expect(revoke).toHaveBeenCalledWith("blob:r2");
+    expect(revoke).not.toHaveBeenCalledWith("blob:r1");
+    // Outdated results can't be switched; further changes don't release more.
+    state().chooseCandidate("a", 0);
+    state().updateSettings("a", { mode: "range" });
+    expect(revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("removing the image releases its result files too", () => {
+    state().finishJob("a", targetResult, goal, files);
+    state().remove("a");
+    expect(revoke).toHaveBeenCalledWith("blob:r1");
+    expect(revoke).toHaveBeenCalledWith("blob:r2");
+  });
+
+  it("a result for a removed image is dropped without creating URLs", () => {
+    state().remove("a");
+    state().finishJob("a", targetResult, goal, files);
+    expect(createUrl).not.toHaveBeenCalled();
+  });
+
+  it("progress only applies to a running job; failures and cancels keep the earlier result", () => {
+    state().setProgress("a", { phase: 1, attempt: 1, maxAttempts: 8 });
+    expect(state().items[0]?.job).toEqual({ status: "idle" });
+    state().finishJob("a", targetResult, goal, files);
+    state().startJob("a");
+    state().failJob("a", "encode_failed");
+    expect(state().items[0]?.job).toEqual({ status: "error", code: "encode_failed" });
+    state().startJob("a");
+    state().cancelJob("a");
+    expect(state().items[0]?.job).toEqual({ status: "idle" });
+    expect(state().items[0]?.result?.urls).toEqual(["blob:r1", "blob:r2"]);
   });
 });

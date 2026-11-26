@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/app/App";
 import { strings } from "../../src/content/strings";
@@ -19,6 +19,9 @@ const base = (id: string, name: string): QueueItem => ({
   thumbnailUrl: null,
   previewUrl: null,
   error: null,
+  settings: null,
+  job: { status: "idle" },
+  result: null,
 });
 
 const ready: QueueItem = {
@@ -146,9 +149,33 @@ describe("image list", () => {
     ).toBeTruthy();
   });
 
-  it("shows no compression controls (they come in M3)", () => {
+  it("output settings appear only once an image is ready (none while reading or failed)", () => {
     const { container } = render(<App />);
-    expect(container.querySelectorAll("select, textarea, input:not([type=file])")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /optimi[sz]e|compress|download/i })).toBeNull();
+    const settingsShown = () => screen.queryByRole("region", { name: strings.settings.heading });
+    for (const name of ["logo.svg", "<img src=x onerror=alert(1)>.png"]) {
+      fireEvent.click(screen.getByRole("button", { name: strings.queue.selectLabel(name) }));
+      expect(settingsShown()).toBeNull();
+      expect(container.querySelectorAll("select, textarea, input:not([type=file])")).toHaveLength(
+        0,
+      );
+      expect(screen.queryByRole("button", { name: /optimi[sz]e|download/i })).toBeNull();
+    }
+    // The selected image finishes reading: its settings (with defaults) appear.
+    act(() => {
+      useQueue
+        .getState()
+        .setReady(
+          "d",
+          { format: "png", mime: "image/png", width: 8, height: 8, hasAlpha: false, notices: [] },
+          "blob:t-d",
+          "blob:p-d",
+        );
+    });
+    expect(settingsShown()).toBeTruthy();
+    expect(screen.getByRole("button", { name: strings.process.optimize })).toBeTruthy();
+    expect(screen.getByLabelText(strings.settings.formatLabel)).toHaveProperty(
+      "value",
+      "image/png",
+    );
   });
 });

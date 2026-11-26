@@ -4,6 +4,8 @@ import { strings } from "../content/strings";
 import { ImagePreview } from "../features/preview/ImagePreview";
 import { ImageQueue } from "../features/queue/ImageQueue";
 import { useQueue } from "../features/queue/store";
+import { ResultPanel } from "../features/results/ResultPanel";
+import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { UploadArea } from "../features/upload/UploadArea";
 
 export function App() {
@@ -22,6 +24,8 @@ export function App() {
             </div>
             <div className="flex flex-col gap-4">
               <ImagePreview />
+              <SettingsPanel />
+              <ResultPanel />
               <p className="text-sm font-medium">{strings.workspace.notYetAvailable}</p>
               <p className="text-sm text-text-muted">{strings.workspace.privacy}</p>
             </div>

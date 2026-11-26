@@ -3,7 +3,8 @@
  * Metadata must be measured, not guessed: format from the bytes, dimensions after orientation,
  * transparency from the pixels. HEIC goes through the shared decode (browser, then libheif).
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { HARNESS_PORT } from "../../playwright.config";
 import type { EngineHarness, HarnessSource, InspectReport } from "../harness/types";
 import { files, withExifOrientation } from "../unit/helpers/image-bytes";

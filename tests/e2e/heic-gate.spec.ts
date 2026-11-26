@@ -3,7 +3,8 @@
  * returns the primary image only, and its chunk is downloaded only when a HEIC file is decoded.
  * libheif needs no OffscreenCanvas, so this runs in all three engines, WebKit on Windows too.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { HARNESS_PORT } from "../../playwright.config";
 import type { EngineHarness, HeicSpikeReport } from "../harness/types";
 

@@ -85,6 +85,9 @@ describe("addFiles (limit of 50; files are never skipped silently)", () => {
       thumbnailUrl: null,
       previewUrl: null,
       error: "decode_failed",
+      settings: null,
+      job: { status: "idle" },
+      result: null,
     }));
     useQueue.getState().add(existing);
     await addFiles([svg("a.svg"), svg("b.svg"), svg("c.svg")]);

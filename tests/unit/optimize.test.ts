@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   InvalidSettingsError,
   MAX_ENCODES_PER_PHASE,
+  stopMargin,
   optimize,
   type OptimizeInput,
 } from "../../src/engine/optimize";
@@ -58,7 +59,7 @@ describe("Maximum mode", () => {
     expect(result.candidates).toHaveLength(1);
     const best = result.candidates[0];
     expect(best?.bytes).toBeLessThanOrEqual(1_000_000);
-    // The next quality up must be over the limit (or the search stopped within D5 tolerance).
+    // The next quality up must be over the limit (or the search stopped within stopMargin).
     expect(photo((best?.quality ?? 0) + 1) > 1_000_000 || (best?.bytes ?? 0) >= 980_000).toBe(true);
     expect(encoder.calls.length).toBeLessThanOrEqual(MAX_ENCODES_PER_PHASE);
     expect(result.attempts).toBe(encoder.calls.length);
@@ -316,5 +317,24 @@ describe("cancellation and limits", () => {
     await promise;
     expect(seen[0]).toBe(1);
     expect(Math.max(...seen)).toBeLessThanOrEqual(MAX_ENCODES_PER_PHASE);
+  });
+});
+
+describe("Maximum/Range search stop margin (D20 Q-A: a search setting, unchanged)", () => {
+  it("keeps the pre-D20 margin, max(2% of the limit, 5,000 B)", () => {
+    expect(stopMargin(100_000)).toBe(5_000);
+    expect(stopMargin(250_000)).toBe(5_000);
+    expect(stopMargin(1_000_000)).toBe(20_000);
+  });
+
+  it("stops early on a file within the margin under a small limit, still reporting it as met", async () => {
+    // 96 KB fits a 100 KB limit and is within the 5,000 B margin: one encode is enough.
+    const { encoder, promise } = run(
+      { sizeAt: () => 96_000 },
+      settings({ mode: "maximum", maxBytes: 100_000 }),
+    );
+    const result = await promise;
+    expect(encoder.calls).toHaveLength(1);
+    expect(result).toMatchObject({ outcome: "met", candidates: [{ bytes: 96_000 }] });
   });
 });

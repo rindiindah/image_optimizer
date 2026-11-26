@@ -24,6 +24,9 @@ export async function checkFile(file: File, id: string): Promise<QueueItem> {
     metadata: null,
     thumbnailUrl: null,
     previewUrl: null,
+    settings: null,
+    job: { status: "idle" } as const,
+    result: null,
   };
   const fail = (error: ImageErrorCode): QueueItem => ({
     ...base,

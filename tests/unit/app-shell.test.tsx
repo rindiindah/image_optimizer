@@ -22,7 +22,7 @@ describe("App shell", () => {
     expect(screen.getByText(strings.workspace.privacy)).toBeTruthy();
   });
 
-  it("has only the working upload controls, nothing for compression yet (no placeholder UI)", () => {
+  it("the empty page has only the upload control (settings appear once an image is ready)", () => {
     const { container } = render(<App />);
 
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([

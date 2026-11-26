@@ -11,17 +11,32 @@ import {
 
 const c = (bytes: number) => ({ bytes });
 
-describe("tolerances (D5, close = 10%)", () => {
-  it("met tolerance is max(2% of target, 5,000 B)", () => {
+describe("tolerances (D20, close = 10%)", () => {
+  it("met tolerance is 2% of the target at every size (no 5,000 B floor or cap)", () => {
+    expect(metTolerance(1_000)).toBe(20);
+    expect(metTolerance(50_000)).toBe(1_000);
+    expect(metTolerance(249_000)).toBe(4_980);
+    expect(metTolerance(250_000)).toBe(5_000);
+    expect(metTolerance(251_000)).toBe(5_020);
     expect(metTolerance(1_000_000)).toBe(20_000);
-    expect(metTolerance(100_000)).toBe(5_000);
-    expect(metTolerance(200_000)).toBe(5_000);
+    expect(metTolerance(10_000_000)).toBe(200_000);
   });
 
-  it("close band is 10% and the display band has a 5,000 B floor", () => {
+  it("close band and display band are both 10% (no 5,000 B floor)", () => {
     expect(closeBand(1_000_000)).toBe(100_000);
     expect(displayBand(1_000_000)).toBe(100_000);
-    expect(displayBand(40_000)).toBe(5_000);
+    expect(displayBand(40_000)).toBe(4_000);
+    expect(displayBand(1_000)).toBe(100);
+  });
+
+  it("small targets are met only within 2% (M3 finding: 2 KB for 1 KB is not 'met')", () => {
+    expect(classifyTarget(2_000, 1_000)).toBe("unreachable");
+    expect(classifyTarget(1_020, 1_000)).toBe("met");
+    expect(classifyTarget(1_021, 1_000)).toBe("close");
+    expect(classifyTarget(1_100, 1_000)).toBe("close");
+    expect(classifyTarget(1_101, 1_000)).toBe("unreachable");
+    expect(classifyTarget(45_000, 50_000)).toBe("close"); // was "met" under D5's floor
+    expect(classifyTarget(49_000, 50_000)).toBe("met");
   });
 
   it("classifies against the target", () => {
@@ -101,10 +116,22 @@ describe("pickTargetCandidates (D14)", () => {
     expect(pick.shown[0]?.bytes).toBe(800_000);
   });
 
-  it("targets under 50 KB keep 'met' results visible (5,000 B floor)", () => {
-    // 10% of 40 KB is 4,000 B, but 44,500 B is within the D5 tolerance (5,000 B).
-    const pick = pickTargetCandidates(null, c(44_500), 40_000);
-    expect(pick).toMatchObject({ case: "one", outcome: "met" });
+  it("small targets: 10% band, no 5,000 B floor (D20)", () => {
+    // 44,500 B for a 40 KB target is 11% away: not shown as a normal candidate any more.
+    expect(pickTargetCandidates(null, c(44_500), 40_000)).toMatchObject({
+      case: "nearest",
+      outcome: "unreachable",
+    });
+    expect(pickTargetCandidates(c(39_500), c(43_900), 40_000)).toMatchObject({
+      case: "both",
+      selected: 0,
+      outcome: "met",
+    });
+    // A 2 KB file for a 1 KB target is "Target not reached", never "met".
+    expect(pickTargetCandidates(null, c(2_000), 1_000)).toMatchObject({
+      case: "nearest",
+      outcome: "unreachable",
+    });
   });
 
   it("no candidates → none", () => {
