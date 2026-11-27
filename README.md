@@ -5,9 +5,10 @@ crop, resize, convert, compare and download them. Every step runs in your browse
 **your images are never uploaded**.
 
 > **Status:** early development. You can add images (including HEIC), crop, rotate and
-> resize them, set a maximum, range or target file size, optimize one image at a time to
-> JPEG, PNG or WebP, compare it with the original (slider or side by side, up to 100 %), and
-> download the result. Several images at once and ZIP download are still being built.
+> resize them, set a maximum, range or target file size, optimize them to JPEG, PNG or WebP
+> (one by one or several at once, copying settings to the selected images), compare each
+> result with the original (slider or side by side, up to 100 %), and download the results
+> one by one or as a ZIP. Accessibility and mobile polish, Help and Privacy are still to come.
 
 ## Requirements
 

@@ -7,8 +7,9 @@ import type { EditSettings } from "../../src/types/image";
 import { readyItem } from "./helpers/items";
 
 vi.mock("../../src/features/process/run", () => ({
-  optimizeImage: vi.fn(),
-  cancelOptimize: vi.fn(),
+  optimizeImages: vi.fn(),
+  cancelImage: vi.fn(),
+  cancelAll: vi.fn(),
 }));
 
 const t = strings.edit;

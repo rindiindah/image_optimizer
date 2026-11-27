@@ -17,7 +17,8 @@ const MAX_STEM_LENGTH = 100;
 const FORBIDDEN = /[<>:"/\\|?*]/gu;
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
 
-export function downloadName(originalName: string, mime: string): string {
+/** `copy` ≥ 2 adds " (2)" before the extension (ZIP name collisions, D23 Q7). */
+export function downloadName(originalName: string, mime: string, copy = 1): string {
   const clean = cleanFileName(originalName);
   const dot = clean.lastIndexOf(".");
   let stem = (dot > 0 ? clean.slice(0, dot) : clean).replace(FORBIDDEN, "_");
@@ -25,5 +26,6 @@ export function downloadName(originalName: string, mime: string): string {
   // Windows drops trailing dots and spaces; leading dots hide files on macOS/Linux.
   stem = stem.replace(/^[.\s]+|[.\s]+$/gu, "");
   if (stem === "" || WINDOWS_RESERVED.test(stem)) stem = stem ? `${stem}_` : "image";
-  return `${stem}-optimized.${EXTENSIONS[mime] ?? "img"}`;
+  const suffix = copy > 1 ? ` (${String(copy)})` : "";
+  return `${stem}-optimized${suffix}.${EXTENSIONS[mime] ?? "img"}`;
 }

@@ -126,9 +126,15 @@ export interface EditSettings {
 
 export type ItemJob =
   | { status: "idle" }
+  /** Waiting for a free slot in the batch (M6). */
+  | { status: "queued" }
   | { status: "running"; progress: Progress | null }
   /** The last run failed with this engine code. */
-  | { status: "error"; code: EngineErrorCode };
+  | { status: "error"; code: EngineErrorCode }
+  /** The user cancelled it (M6); an earlier result, if any, stays as it was. */
+  | { status: "cancelled" }
+  /** Not started: its settings are incomplete or invalid (M6, D23 Q3). */
+  | { status: "skipped" };
 
 /** A finished run. Owns one object URL per candidate file; the store revokes them. */
 export interface ItemResult {

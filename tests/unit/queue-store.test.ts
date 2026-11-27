@@ -235,7 +235,110 @@ describe("settings, jobs and results (M3)", () => {
     expect(state().items[0]?.job).toEqual({ status: "error", code: "encode_failed" });
     state().startJob("a");
     state().cancelJob("a");
-    expect(state().items[0]?.job).toEqual({ status: "idle" });
+    expect(state().items[0]?.job).toEqual({ status: "cancelled" }); // M6: shown on the row
     expect(state().items[0]?.result?.urls).toEqual(["blob:r1", "blob:r2"]);
   });
 });
+
+describe("selection and apply to selected (M6, D23)", () => {
+  const ready = (id: string) => {
+    state().add([item(id)]);
+    state().setReady(
+      id,
+      { ...info, format: "png", hasAlpha: false },
+      `blob:t-${id}`,
+      `blob:p-${id}`,
+    );
+  };
+  const settingsOf = (id: string) => state().items.find((i) => i.id === id)?.settings;
+
+  beforeEach(() => {
+    createUrl.mockReset().mockReturnValue("blob:r");
+    URL.createObjectURL = createUrl;
+    for (const id of ["a", "b", "c"]) ready(id);
+  });
+
+  it("checkboxes tick and untick ids; unknown ids are ignored; removing drops the id", () => {
+    state().setChecked("a", true);
+    state().setChecked("b", true);
+    state().setChecked("zzz", true);
+    state().setChecked("a", false);
+    expect(state().checked).toEqual(["b"]);
+    state().setAllChecked(["a", "b", "c", "gone"]);
+    expect(state().checked).toEqual(["a", "b", "c"]);
+    state().remove("b");
+    expect(state().checked).toEqual(["a", "c"]);
+    state().setAllChecked([]);
+    expect(state().checked).toEqual([]);
+  });
+
+  it("each group overwrites only its own fields; pixel values are never copied", () => {
+    state().updateSettings("a", {
+      mode: "range",
+      size: { text: "900", unit: "KB" },
+      min: { text: "100", unit: "KB" },
+      format: "image/webp",
+      minQuality: "40",
+      allowDimensionReduction: true,
+      keepOriginal: false,
+      resize: { width: "10", height: "", keepAspect: true },
+      minSize: { width: "5", height: "5" },
+    });
+    expect(state().applySettings("a", ["b"], ["size"])).toBe(1);
+    expect(settingsOf("b")).toMatchObject({ mode: "range", format: "image/png", minQuality: "" });
+    expect(settingsOf("b")?.size).toEqual({ text: "900", unit: "KB" });
+
+    state().applySettings("a", ["c"], ["format", "more"]);
+    const c = settingsOf("c");
+    expect(c).toMatchObject({
+      mode: "maximum",
+      format: "image/webp",
+      minQuality: "40",
+      allowDimensionReduction: true,
+      keepOriginal: false,
+    });
+    // Never copied (they depend on each image's dimensions).
+    expect(c?.resize).toEqual({ width: "", height: "", keepAspect: true });
+    expect(c?.minSize).toEqual({ width: "", height: "" });
+  });
+
+  it("a source without a fill colour doesn't clear the other image's choice", () => {
+    state().updateSettings("b", { format: "image/jpeg", background: "#000000" });
+    state().updateSettings("a", { format: "image/jpeg", background: null });
+    state().applySettings("a", ["b"], ["format"]);
+    expect(settingsOf("b")?.background).toBe("#000000");
+  });
+
+  it("running images aren't changed; changed results become outdated; crop/rotation untouched", () => {
+    const result: OptimizationResult = {
+      mode: "maximum",
+      outcome: "met",
+      candidates: [{ ...candidateOf(), side: "below" }],
+      selected: 0,
+      closest: null,
+      attempts: 1,
+    };
+    state().finishJob("c", result, { mode: "maximum", maxBytes: 9 }, [new Blob(["c"])]);
+    state().startJob("b");
+    state().updateSettings("a", { format: "image/webp" });
+    expect(state().applySettings("a", ["a", "b", "c"], ["format"])).toBe(1); // not itself, not b
+    expect(settingsOf("b")?.format).toBe("image/png");
+    const c = state().items.find((i) => i.id === "c");
+    expect(c?.result?.outdated).toBe(true);
+    expect(c?.edits).toMatchObject({ crop: null, rotation: 0 });
+    expect(state().applySettings("a", ["c"], [])).toBe(0);
+  });
+});
+
+function candidateOf(): Candidate {
+  return {
+    side: "below",
+    bytes: 1,
+    mime: "image/png",
+    width: 1,
+    height: 1,
+    quality: null,
+    outcome: "met",
+    flags: [],
+  };
+}

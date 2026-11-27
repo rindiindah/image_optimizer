@@ -18,7 +18,7 @@ describe("App shell", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: strings.workspace.emptyHeading }),
     ).toBeTruthy();
-    expect(screen.getByText(strings.workspace.notYetAvailable)).toBeTruthy();
+    expect(screen.getByText(strings.workspace.emptyBody)).toBeTruthy();
     expect(screen.getByText(strings.workspace.privacy)).toBeTruthy();
   });
 

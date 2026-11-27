@@ -15,16 +15,21 @@ import type {
   QueueItem,
 } from "../../types/image";
 import type { EngineErrorCode } from "../../workers/protocol";
-import { defaultEdits, defaultSettings } from "../settings/settings";
+import { applyPatch, defaultEdits, defaultSettings, type ApplyGroup } from "../settings/settings";
 
 interface QueueState {
   items: QueueItem[];
   selectedId: string | null;
+  /** Ids ticked with the row checkboxes (M6, D23 Q1), for batch actions. */
+  checked: string[];
   /** Latest status message for screen readers (rendered in an aria-live region). */
   announcement: string;
 
   add: (items: QueueItem[]) => void;
   select: (id: string) => void;
+  setChecked: (id: string, on: boolean) => void;
+  /** Ticks exactly these ids ([] clears the selection). */
+  setAllChecked: (ids: string[]) => void;
   remove: (id: string) => void;
   setReady: (id: string, info: ImageInfo, thumbnailUrl: string, previewUrl: string) => void;
   setError: (id: string, code: ImageErrorCode) => void;
@@ -34,12 +39,28 @@ interface QueueState {
   updateSettings: (id: string, patch: Partial<ImageSettings>) => void;
   /** Applies crop/rotate edits (M4); an existing result becomes outdated. */
   updateEdits: (id: string, edits: EditSettings) => void;
+  /**
+   * Copies the chosen setting groups from one image to others (D23 Q2). Running images are left
+   * alone. Returns how many images changed; their results become outdated.
+   */
+  applySettings: (fromId: string, ids: string[], groups: ApplyGroup[]) => number;
+  queueJob: (id: string) => void;
+  skipJob: (id: string) => void;
   startJob: (id: string) => void;
   setProgress: (id: string, progress: Progress) => void;
-  /** Stores a finished run; replaces (and releases) any earlier result. */
-  finishJob: (id: string, result: OptimizationResult, goal: SizeGoal, files: Blob[]) => void;
+  /**
+   * Stores a finished run; replaces (and releases) any earlier result. `stale`: the settings or
+   * edits changed while it ran, so the new result is outdated at once.
+   */
+  finishJob: (
+    id: string,
+    result: OptimizationResult,
+    goal: SizeGoal,
+    files: Blob[],
+    stale?: boolean,
+  ) => void;
   failJob: (id: string, code: EngineErrorCode) => void;
-  /** Cancelled: back to idle, the earlier result (if any) stays as it was. */
+  /** Cancelled (queued or running); the earlier result (if any) stays as it was. */
   cancelJob: (id: string) => void;
   chooseCandidate: (id: string, index: number) => void;
 }
@@ -63,6 +84,14 @@ function outdate(result: ItemResult): ItemResult {
   };
 }
 
+/** A settings/edits change: outdates a result, and a "skipped" reason may no longer hold. */
+function changed(item: QueueItem): Partial<QueueItem> {
+  return {
+    result: item.result && !item.result.outdated ? outdate(item.result) : item.result,
+    job: item.job.status === "skipped" ? { status: "idle" } : item.job,
+  };
+}
+
 export const useQueue = create<QueueState>()((set, get) => {
   const update = (id: string, change: (item: QueueItem) => Partial<QueueItem>) => {
     set((state) => ({
@@ -73,6 +102,7 @@ export const useQueue = create<QueueState>()((set, get) => {
   return {
     items: [],
     selectedId: null,
+    checked: [],
     announcement: "",
 
     add: (items) => {
@@ -86,6 +116,18 @@ export const useQueue = create<QueueState>()((set, get) => {
       if (get().items.some((item) => item.id === id)) set({ selectedId: id });
     },
 
+    setChecked: (id, on) => {
+      const { checked, items } = get();
+      if (!items.some((item) => item.id === id)) return;
+      const rest = checked.filter((other) => other !== id);
+      set({ checked: on ? [...rest, id] : rest });
+    },
+
+    setAllChecked: (ids) => {
+      const known = new Set(get().items.map((item) => item.id));
+      set({ checked: ids.filter((id) => known.has(id)) });
+    },
+
     remove: (id) => {
       const { items, selectedId } = get();
       const index = items.findIndex((item) => item.id === id);
@@ -96,7 +138,11 @@ export const useQueue = create<QueueState>()((set, get) => {
       // Removing the selected image selects its neighbour (next, else previous).
       const nextSelected =
         selectedId === id ? (rest[index]?.id ?? rest[index - 1]?.id ?? null) : selectedId;
-      set({ items: rest, selectedId: nextSelected });
+      set({
+        items: rest,
+        selectedId: nextSelected,
+        checked: get().checked.filter((other) => other !== id),
+      });
     },
 
     setReady: (id, info, thumbnailUrl, previewUrl) => {
@@ -133,16 +179,37 @@ export const useQueue = create<QueueState>()((set, get) => {
 
     updateSettings: (id, patch) => {
       update(id, (item) => ({
+        ...changed(item),
         settings: item.settings && { ...item.settings, ...patch },
-        result: item.result && !item.result.outdated ? outdate(item.result) : item.result,
       }));
     },
 
     updateEdits: (id, edits) => {
-      update(id, (item) => ({
-        edits,
-        result: item.result && !item.result.outdated ? outdate(item.result) : item.result,
+      update(id, (item) => ({ ...changed(item), edits }));
+    },
+
+    applySettings: (fromId, ids, groups) => {
+      const from = get().items.find((item) => item.id === fromId)?.settings;
+      if (!from || groups.length === 0) return 0;
+      const patch = applyPatch(from, groups);
+      const targets = new Set(ids.filter((id) => id !== fromId));
+      let count = 0;
+      set((state) => ({
+        items: state.items.map((item) => {
+          if (!targets.has(item.id) || !item.settings || item.job.status === "running") return item;
+          count += 1;
+          return { ...item, ...changed(item), settings: { ...item.settings, ...patch } };
+        }),
       }));
+      return count;
+    },
+
+    queueJob: (id) => {
+      update(id, () => ({ job: { status: "queued" } }));
+    },
+
+    skipJob: (id) => {
+      update(id, () => ({ job: { status: "skipped" } }));
     },
 
     startJob: (id) => {
@@ -155,21 +222,19 @@ export const useQueue = create<QueueState>()((set, get) => {
       );
     },
 
-    finishJob: (id, result, goal, files) => {
+    finishJob: (id, result, goal, files, stale = false) => {
       const item = get().items.find((other) => other.id === id);
       if (!item) return; // removed while it ran: nothing to keep
       revoke(...(item.result?.urls ?? []));
-      update(id, () => ({
-        job: { status: "idle" },
-        result: {
-          result,
-          goal,
-          files,
-          urls: files.map((file) => URL.createObjectURL(file)),
-          selected: result.selected,
-          outdated: false,
-        },
-      }));
+      const fresh: ItemResult = {
+        result,
+        goal,
+        files,
+        urls: files.map((file) => URL.createObjectURL(file)),
+        selected: result.selected,
+        outdated: false,
+      };
+      update(id, () => ({ job: { status: "idle" }, result: stale ? outdate(fresh) : fresh }));
     },
 
     failJob: (id, code) => {
@@ -177,7 +242,7 @@ export const useQueue = create<QueueState>()((set, get) => {
     },
 
     cancelJob: (id) => {
-      update(id, () => ({ job: { status: "idle" } }));
+      update(id, () => ({ job: { status: "cancelled" } }));
     },
 
     chooseCandidate: (id, index) => {

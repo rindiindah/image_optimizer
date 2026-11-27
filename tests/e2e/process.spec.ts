@@ -110,7 +110,8 @@ async function addGenerated(
   });
 }
 
-const optimizeButton = (page: Page) => page.getByRole("button", { name: strings.process.optimize });
+const optimizeButton = (page: Page) =>
+  page.getByRole("button", { name: strings.process.optimize, exact: true });
 const resultSection = (page: Page) => page.getByRole("region", { name: strings.result.heading });
 
 /**
@@ -319,7 +320,7 @@ test.describe("one image end to end (M3)", () => {
     await page.getByLabel(s.sizeLabel.maximum, { exact: true }).fill("500");
     await optimizeButton(page).click();
     await expect(page.getByText(/^Attempt \d of up to 8$/)).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: strings.process.cancel }).click();
+    await page.getByRole("button", { name: strings.process.cancel, exact: true }).click();
 
     await expect(optimizeButton(page)).toBeEnabled();
     await expect(page.getByRole("status")).toHaveText(strings.process.announce.cancelled);
@@ -343,7 +344,9 @@ test.describe("one image end to end (M3)", () => {
     await page.getByLabel(s.sizeLabel.maximum, { exact: true }).fill("400");
     await expect(page.getByText(strings.result.outdated)).toBeVisible();
     await expect(page.getByRole("link", { name: strings.result.download })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: strings.result.download })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: strings.result.download, exact: true }),
+    ).toBeDisabled();
     await expectClean(page, errors);
   });
 });

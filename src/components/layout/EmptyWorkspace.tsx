@@ -15,7 +15,6 @@ export function EmptyWorkspace() {
       <div className="mt-6">
         <UploadArea />
       </div>
-      <p className="mt-6 text-sm font-medium">{strings.workspace.notYetAvailable}</p>
       <p className="mt-2 text-sm text-text-muted">{strings.workspace.privacy}</p>
     </section>
   );

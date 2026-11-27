@@ -79,7 +79,7 @@ async function optimize(page: Page, format: string, size: string, unit: "KB" | "
   await page.getByLabel(s.formatLabel).selectOption(format);
   await page.getByLabel(s.sizeLabel.maximum, { exact: true }).fill(size);
   await page.getByLabel(s.unitLabel(s.sizeLabel.maximum)).selectOption(unit);
-  await page.getByRole("button", { name: strings.process.optimize }).click();
+  await page.getByRole("button", { name: strings.process.optimize, exact: true }).click();
   await expect(page.getByRole("link", { name: r.download })).toBeVisible({ timeout: 90_000 });
 }
 
@@ -212,7 +212,7 @@ test.describe("results and comparison (M5)", () => {
     await page.getByText(s.moreOptions, { exact: true }).click();
     await page.getByRole("checkbox", { name: s.keepOriginal }).uncheck();
     await expect(page.getByText(r.outdated)).toBeVisible();
-    await page.getByRole("button", { name: strings.process.optimize }).click();
+    await page.getByRole("button", { name: strings.process.optimize, exact: true }).click();
     await expect(page.getByRole("link", { name: r.download })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(r.flags.passthrough)).toHaveCount(0);
     await expect(page.getByText(r.metadata.removed)).toBeVisible();

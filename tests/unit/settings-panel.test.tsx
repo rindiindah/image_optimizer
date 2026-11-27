@@ -1,11 +1,16 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/app/App";
 import { strings } from "../../src/content/strings";
 import { useQueue } from "../../src/features/queue/store";
+import { checkItem } from "../../src/features/settings/settings";
 import { readyItem } from "./helpers/items";
 
-const run = vi.hoisted(() => ({ optimizeImage: vi.fn(), cancelOptimize: vi.fn() }));
+const run = vi.hoisted(() => ({
+  optimizeImages: vi.fn(),
+  cancelImage: vi.fn(),
+  cancelAll: vi.fn(),
+}));
 vi.mock("../../src/features/process/run", () => run);
 
 const s = strings.settings;
@@ -14,9 +19,18 @@ const state = () => useQueue.getState();
 beforeEach(() => {
   useQueue.setState(useQueue.getInitialState(), true);
   URL.revokeObjectURL = vi.fn();
-  run.optimizeImage.mockReset();
-  run.cancelOptimize.mockReset();
+  run.optimizeImages.mockReset();
+  run.cancelImage.mockReset();
 });
+
+/** Optimize queued image "a"; what the run will use is `checkItem` of it (M6). */
+const sent = () => {
+  expect(run.optimizeImages).toHaveBeenLastCalledWith(["a"]);
+  const item = state().items.find((i) => i.id === "a");
+  const check = item && checkItem(item);
+  if (!check?.ok) throw new Error("settings aren't valid");
+  return check;
+};
 
 const optimize = () => screen.getByRole("button", { name: strings.process.optimize });
 const sizeInput = (label: string = s.sizeLabel.maximum) => screen.getByLabelText(label);
@@ -69,9 +83,8 @@ describe("settings panel", () => {
     expect(screen.getByText(s.summary.format("JPEG"))).toBeTruthy();
     expect(screen.getByText(s.summary.dimensionsKept)).toBeTruthy();
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenCalledWith(
-      "a",
-      {
+    expect(sent()).toMatchObject({
+      settings: {
         goal: { mode: "maximum", maxBytes: 500_000 },
         format: "image/jpeg",
         minQuality: null,
@@ -80,8 +93,8 @@ describe("settings panel", () => {
         allowColorReduction: false,
         background: null,
       },
-      { crop: null, rotation: 0, resize: null },
-    );
+      edits: { crop: null, rotation: 0, resize: null },
+    });
   });
 
   it("output size: keep aspect ratio fills the other side; never above the image (M4)", () => {
@@ -95,7 +108,7 @@ describe("settings panel", () => {
     expect(height).toHaveProperty("value", "750");
     expect(screen.getByText(s.summary.output(1000, 750))).toBeTruthy();
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+    expect(sent().edits).toEqual({
       crop: null,
       rotation: 0,
       resize: { width: 1000, height: 750 },
@@ -136,7 +149,7 @@ describe("settings panel", () => {
     expect(screen.getByText(s.summary.output(900, 1200))).toBeTruthy();
     expect(screen.getByLabelText(s.resizeWidth).getAttribute("placeholder")).toBe("900");
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+    expect(sent().edits).toEqual({
       crop: { x: 100, y: 200, width: 1200, height: 900 },
       rotation: 90,
       resize: null,
@@ -165,7 +178,7 @@ describe("settings panel", () => {
     expect(screen.queryByLabelText(s.resizeWidth)).toBeNull();
     expect(screen.getByText(s.resizeExact(600, 800))).toBeTruthy();
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenLastCalledWith("a", expect.anything(), {
+    expect(sent().edits).toEqual({
       crop: { x: 0, y: 0, width: 1200, height: 1600 },
       rotation: 0,
       resize: { width: 600, height: 800 },
@@ -182,14 +195,10 @@ describe("settings panel", () => {
     type(screen.getByLabelText(s.minHeight), "600");
     expect(screen.getByText(s.summary.notBelow(800, 600))).toBeTruthy();
     fireEvent.click(optimize());
-    expect(run.optimizeImage).toHaveBeenLastCalledWith(
-      "a",
-      expect.objectContaining({
-        allowDimensionReduction: true,
-        minDimensions: { width: 800, height: 600 },
-      }),
-      expect.anything(),
-    );
+    expect(sent().settings).toMatchObject({
+      allowDimensionReduction: true,
+      minDimensions: { width: 800, height: 600 },
+    });
     type(screen.getByLabelText(s.minWidth), "5000");
     expect(screen.getByText(s.minSizeErrors.too_large)).toBeTruthy();
     expect(optimize()).toHaveProperty("disabled", true);
@@ -255,10 +264,10 @@ describe("settings panel", () => {
     expect(screen.getByText("Attempt 3 of up to 8")).toBeTruthy();
     expect(sizeInput().matches(":disabled")).toBe(true); // inside the disabled fieldset
     fireEvent.click(screen.getByRole("button", { name: strings.process.cancel }));
-    expect(run.cancelOptimize).toHaveBeenCalled();
+    expect(run.cancelImage).toHaveBeenCalledWith("a");
   });
 
-  it("another image running: Optimize explains why it waits", () => {
+  it("another image running doesn't block Optimize; a queued image says it waits (M6)", () => {
     state().add([
       readyItem("a", "photo.jpg", {}, { job: { status: "running", progress: null } }),
       readyItem("b", "other.jpg"),
@@ -266,8 +275,15 @@ describe("settings panel", () => {
     state().select("b");
     render(<App />);
     type(sizeInput(), "500");
-    expect(optimize()).toHaveProperty("disabled", true);
-    expect(screen.getByText(strings.process.otherRunning)).toBeTruthy();
+    expect(optimize()).toHaveProperty("disabled", false);
+    fireEvent.click(optimize());
+    expect(run.optimizeImages).toHaveBeenLastCalledWith(["b"]);
+    act(() => {
+      state().queueJob("b");
+    });
+    expect(screen.getByText(strings.process.waiting)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: strings.process.cancel }));
+    expect(run.cancelImage).toHaveBeenCalledWith("b");
   });
 
   it("an engine error says what happened, that the original is safe, and what next", () => {

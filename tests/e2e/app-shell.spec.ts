@@ -39,7 +39,7 @@ test("serves the empty workspace with the production security headers", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: strings.workspace.emptyHeading }),
   ).toBeVisible();
-  await expect(page.getByText(strings.workspace.notYetAvailable)).toBeVisible();
+  await expect(page.getByText(strings.workspace.emptyBody)).toBeVisible();
   await expect(page.getByRole("contentinfo")).toContainText(strings.footer.licence);
   // The empty page has only the upload control; settings appear once an image is ready.
   await expect(page.getByRole("button")).toHaveCount(1);

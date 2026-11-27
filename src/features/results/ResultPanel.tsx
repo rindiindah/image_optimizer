@@ -3,21 +3,11 @@ import { percentFromTarget } from "../../engine/policy";
 import type { Candidate, SizeGoal } from "../../types/engine";
 import type { ItemResult, QueueItem } from "../../types/image";
 import { downloadName } from "../../utils/download-name";
-import { formatSize, type SizeBound } from "../../utils/file-size";
+import { formatSize } from "../../utils/file-size";
+import { sizeOf } from "./size";
 import { useQueue } from "../queue/store";
 import { formatName } from "../settings/settings";
 import { ComparisonViewer } from "./ComparisonViewer";
-
-/** The bound a size is shown against, so it never appears on the wrong side of it (D4). */
-function boundFor(goal: SizeGoal, bytes: number): SizeBound {
-  if (goal.mode === "maximum") return { kind: "upper", bytes: goal.maxBytes };
-  if (goal.mode === "target") return { kind: "upper", bytes: goal.targetBytes };
-  return bytes < goal.minBytes
-    ? { kind: "lower", bytes: goal.minBytes }
-    : { kind: "upper", bytes: goal.maxBytes };
-}
-
-const sizeOf = (goal: SizeGoal, bytes: number) => formatSize(bytes, boundFor(goal, bytes));
 
 function goalText(goal: SizeGoal): string {
   if (goal.mode === "maximum") return formatSize(goal.maxBytes);

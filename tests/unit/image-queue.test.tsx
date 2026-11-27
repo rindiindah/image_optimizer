@@ -156,10 +156,13 @@ describe("image list", () => {
     for (const name of ["logo.svg", "<img src=x onerror=alert(1)>.png"]) {
       fireEvent.click(screen.getByRole("button", { name: strings.queue.selectLabel(name) }));
       expect(settingsShown()).toBeNull();
-      expect(container.querySelectorAll("select, textarea, input:not([type=file])")).toHaveLength(
-        0,
+      // Only the list's own controls (row checkboxes, M6); no settings fields.
+      const fields = container.querySelectorAll(
+        "select, textarea, input:not([type=file]):not([type=checkbox])",
       );
-      expect(screen.queryByRole("button", { name: /optimi[sz]e|download/i })).toBeNull();
+      expect(fields).toHaveLength(0);
+      expect(screen.queryByRole("button", { name: strings.process.optimize })).toBeNull();
+      expect(screen.queryByRole("link", { name: strings.result.download })).toBeNull();
     }
     // The selected image finishes reading: its settings (with defaults) appear.
     act(() => {

@@ -26,7 +26,6 @@ export function App() {
               <ImagePreview />
               <SettingsPanel />
               <ResultPanel />
-              <p className="text-sm font-medium">{strings.workspace.notYetAvailable}</p>
               <p className="text-sm text-text-muted">{strings.workspace.privacy}</p>
             </div>
           </div>

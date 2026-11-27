@@ -10,8 +10,8 @@ import type {
   OutputFormat,
   SizeGoal,
 } from "../../types/engine";
-import type { EditSettings, ImageMetadata, ImageSettings } from "../../types/image";
-import { linkedSide } from "../../utils/edits";
+import type { EditSettings, ImageMetadata, ImageSettings, QueueItem } from "../../types/image";
+import { editedSize, linkedSide } from "../../utils/edits";
 import { parseSize, type ParseSizeResult } from "../../utils/file-size";
 
 /** Q3: JPEG/PNG/WebP keep their format; anything else → JPEG, or WebP when transparent. */
@@ -191,4 +191,57 @@ export function toOptimizeSettings(
       background,
     },
   };
+}
+
+export type ItemCheck =
+  | { ok: true; settings: OptimizeSettings; edits: ImageEdits; outputSize: Dimensions }
+  | { ok: false; errors: SettingsErrors };
+
+/** What the edits leave for an image: its edited size and any Exact size. */
+export function editFrame(item: QueueItem): EditFrame {
+  const meta = item.metadata;
+  const source = { width: meta?.width ?? 1, height: meta?.height ?? 1 };
+  const edits = item.edits;
+  return {
+    edited: editedSize(source, edits ?? { crop: null, rotation: 0 }),
+    exact: edits?.ratio === "exact" ? edits.exact : null,
+  };
+}
+
+/**
+ * The one check before a run (M6): the same rule for the panel's Optimize button and the batch.
+ * Not ok for an image that isn't ready (no metadata, settings or edits yet).
+ */
+export function checkItem(item: QueueItem): ItemCheck {
+  if (!item.metadata || !item.settings || !item.edits) return { ok: false, errors: {} };
+  const frame = editFrame(item);
+  const check = toOptimizeSettings(item.settings, item.metadata.hasAlpha, frame);
+  if (!check.ok) return check;
+  return {
+    ok: true,
+    settings: check.settings,
+    outputSize: check.outputSize,
+    edits: toImageEdits(item.edits, frame.edited, check.outputSize),
+  };
+}
+
+/**
+ * "Apply to selected" groups (D23 Q2). Pixel values (crop, rotation, Exact size, output W/H,
+ * minimum W × H) are never in a group: they belong to one image's dimensions.
+ */
+export const APPLY_GROUPS = {
+  size: ["mode", "size", "min"],
+  format: ["format", "background"],
+  more: ["minQuality", "allowDimensionReduction", "allowColorReduction", "keepOriginal"],
+} as const satisfies Record<string, readonly (keyof ImageSettings)[]>;
+
+export type ApplyGroup = keyof typeof APPLY_GROUPS;
+
+/** The fields of `from` in the chosen groups, as a patch for another image's settings. */
+export function applyPatch(from: ImageSettings, groups: ApplyGroup[]): Partial<ImageSettings> {
+  const patch: Partial<Record<keyof ImageSettings, unknown>> = {};
+  for (const group of groups) for (const key of APPLY_GROUPS[group]) patch[key] = from[key];
+  // A source without a fill colour doesn't clear a colour the other image already chose.
+  if (patch.background === null) delete patch.background;
+  return patch as Partial<ImageSettings>;
 }

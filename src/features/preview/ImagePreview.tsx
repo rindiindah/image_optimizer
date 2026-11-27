@@ -23,7 +23,7 @@ function Preview({ item }: { item: QueueItem }) {
   const name = item.name || strings.queue.untitled;
   const edits = item.edits;
   const edited = edits !== null && (edits.crop !== null || edits.rotation !== 0);
-  const running = item.job.status === "running";
+  const running = item.job.status === "running" || item.job.status === "queued";
 
   if (editing && item.metadata) {
     return (

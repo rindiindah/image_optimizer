@@ -10,9 +10,7 @@ export const strings = {
   workspace: {
     emptyHeading: "No images yet",
     emptyBody:
-      "This app will let you set the exact output file size you need, then crop, resize, convert and download your images.",
-    notYetAvailable:
-      "Several images at once and ZIP download aren't available yet. These parts of the app are still being built.",
+      "Set the exact output file size you need, then crop, resize, convert and download your images, one at a time or as a ZIP.",
     privacy: "All processing happens in your browser. Your images are never uploaded.",
   },
   upload: {
@@ -30,7 +28,26 @@ export const strings = {
     status: { reading: "Reading…", ready: "Ready", error: "Can't be used" },
     removeLabel: (name: string) => `Remove ${name}`,
     remove: "Remove",
-    selectLabel: (name: string) => `Select ${name}`,
+    selectLabel: (name: string) => `Show ${name}`,
+    checkLabel: (name: string) => `Select ${name}`,
+    cancelLabel: (name: string) => `Cancel ${name}`,
+    retryLabel: (name: string) => `Retry ${name}`,
+    retry: "Retry",
+    job: {
+      waiting: "Waiting",
+      starting: "Optimizing: starting…",
+      attempt: (attempt: number, max: number) =>
+        `Optimizing: attempt ${String(attempt)} of up to ${String(max)}`,
+      failed: (what: string) => `Failed: ${what}`,
+      cancelled: "Cancelled",
+      skipped: "Skipped: settings incomplete. Open this image to finish them.",
+      outdated: "Outdated: optimize again",
+      done: (size: string) => `Done: ${size}`,
+      targetMet: (size: string) => `Target met: ${size}`,
+      targetClose: (size: string) => `Close to the target: ${size}`,
+      targetMissed: (size: string) => `Target not reached: ${size}`,
+      noFile: "No file fits these settings",
+    },
     dimensions: (w: number, h: number) => `${String(w)} × ${String(h)} px`,
     transparent: "Has transparency",
     announcement: (added: number, failed: number, notAdded: number) =>
@@ -43,6 +60,47 @@ export const strings = {
       ]
         .filter(Boolean)
         .join(" "),
+  },
+  batch: {
+    selected: (n: number) => `${String(n)} selected`,
+    selectAll: "Select all",
+    clear: "Clear selection",
+    optimize: "Optimize selected",
+    cancelAll: "Cancel all",
+    zip: "Download selected (ZIP)",
+    zipNone: "Select images with an up-to-date result to download them as a ZIP.",
+    leftOut: (left: number, total: number, reasons: string[]) =>
+      `${String(left)} of ${String(total)} selected ${total === 1 ? "image isn't" : "images aren't"} included: ${reasons.join(", ")}.`,
+    reasons: {
+      noResult: (n: number) => `${String(n)} ${n === 1 ? "has" : "have"} no result yet`,
+      outdated: (n: number) => `${String(n)} ${n === 1 ? "result is" : "results are"} outdated`,
+      noFile: (n: number) => `${String(n)} ${n === 1 ? "has" : "have"} no file that fits`,
+    },
+    preparing: (done: number, total: number) =>
+      `Preparing ZIP: ${String(done)} of ${String(total)} files`,
+    zipReady: (n: number) => `ZIP with ${String(n)} ${n === 1 ? "file" : "files"} created.`,
+    zipFailed:
+      "The ZIP couldn't be created. Your images and results are safe; you can still download them one by one.",
+  },
+  apply: {
+    open: "Apply to selected images…",
+    heading: "Apply settings to selected images",
+    intro: (name: string, n: number) =>
+      `Copy settings from ${name} to ${String(n)} selected ${n === 1 ? "image" : "images"}.`,
+    legend: "Settings to copy (these are overwritten)",
+    groups: {
+      size: "File size: the size goal and the size(s)",
+      format: "Format, and the fill colour for transparent areas in JPEG",
+      more: "More options: minimum quality, smaller dimensions, colour reduction, keep the original",
+    },
+    never:
+      "Never copied: crop, rotation, Exact size, output width and height, and the minimum width and height, because they depend on each image's dimensions.",
+    running: (n: number) =>
+      `${String(n)} of them ${n === 1 ? "is" : "are"} being optimized and won't be changed.`,
+    outdated: "Existing results of the changed images become outdated.",
+    apply: "Apply",
+    cancel: "Cancel",
+    applied: (n: number) => `Settings applied to ${String(n)} ${n === 1 ? "image" : "images"}.`,
   },
   preview: {
     heading: "Preview",
@@ -250,7 +308,7 @@ export const strings = {
     optimize: "Optimize",
     cancel: "Cancel",
     fixFirst: "Complete the settings above to start.",
-    otherRunning: "Another image is being optimized. Wait for it to finish, or cancel it.",
+    waiting: "Waiting for another image to finish.",
     starting: "Starting…",
     attempt: (attempt: number, max: number, phase: 1 | 2) =>
       phase === 2
@@ -260,6 +318,16 @@ export const strings = {
       done: "Optimization finished.",
       error: "Optimization failed.",
       cancelled: "Optimization cancelled.",
+      batchStart: (queued: number, skipped: number, upToDate: number) =>
+        [
+          `Optimizing ${String(queued)} ${queued === 1 ? "image" : "images"}.`,
+          skipped > 0 ? `${String(skipped)} skipped: settings incomplete.` : "",
+          upToDate > 0 ? `${String(upToDate)} already up to date.` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      batchDone: (done: number, failed: number, cancelled: number) =>
+        `Batch finished: ${String(done)} done, ${String(failed)} failed, ${String(cancelled)} cancelled.`,
     },
     errors: {
       unsupported_browser: {

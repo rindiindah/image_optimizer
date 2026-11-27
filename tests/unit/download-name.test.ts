@@ -19,6 +19,12 @@ describe("downloadName (Q5)", () => {
     expect(downloadName("line\nbreak.jpg", "image/jpeg")).toBe("line break-optimized.jpg");
   });
 
+  it("a copy number (ZIP collisions, D23 Q7) goes before the extension", () => {
+    expect(downloadName("photo.jpg", "image/jpeg", 1)).toBe("photo-optimized.jpg");
+    expect(downloadName("photo.jpg", "image/jpeg", 2)).toBe("photo-optimized (2).jpg");
+    expect(downloadName("CON.png", "image/png", 12)).toBe("CON_-optimized (12).png");
+  });
+
   it("never gives an empty, hidden or reserved name", () => {
     expect(downloadName(".png", "image/png")).toBe("png-optimized.png");
     expect(downloadName("...", "image/png")).toBe("image-optimized.png");

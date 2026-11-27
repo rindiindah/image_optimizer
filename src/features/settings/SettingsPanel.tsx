@@ -2,17 +2,18 @@ import type { ReactNode } from "react";
 import { strings } from "../../content/strings";
 import type { Dimensions, Mode, OptimizeSettings, OutputFormat } from "../../types/engine";
 import type { EditSettings, ImageSettings, QueueItem, SizeField } from "../../types/image";
-import { editedSize, linkedSide } from "../../utils/edits";
+import { linkedSide } from "../../utils/edits";
 import { formatSize, type SizeUnit } from "../../utils/file-size";
-import { cancelOptimize, optimizeImage } from "../process/run";
+import { cancelImage, optimizeImages } from "../process/run";
 import { useQueue } from "../queue/store";
+import { ApplyDialog } from "./ApplyDialog";
 import {
+  checkItem,
+  editFrame,
   formatName,
   hasQuality,
   needsBackground,
   parsePixels,
-  toImageEdits,
-  toOptimizeSettings,
   type SettingsErrors,
 } from "./settings";
 
@@ -185,33 +186,21 @@ function linkResize(
 /** Settings, summary and Optimize/Cancel for the selected image (M3, output size M4). */
 export function SettingsPanel() {
   const item = useQueue((state) => state.items.find((other) => other.id === state.selectedId));
-  const otherRunning = useQueue((state) =>
-    state.items.some((other) => other.id !== state.selectedId && other.job.status === "running"),
-  );
   if (!item?.settings || !item.metadata) return null;
-  return <Panel item={item} settings={item.settings} otherRunning={otherRunning} />;
+  return <Panel item={item} settings={item.settings} />;
 }
 
-function Panel({
-  item,
-  settings,
-  otherRunning,
-}: {
-  item: QueueItem;
-  settings: ImageSettings;
-  otherRunning: boolean;
-}) {
+function Panel({ item, settings }: { item: QueueItem; settings: ImageSettings }) {
   const hasAlpha = item.metadata?.hasAlpha ?? false;
   const set = (patch: Partial<ImageSettings>) => {
     useQueue.getState().updateSettings(item.id, patch);
   };
-  const source = { width: item.metadata?.width ?? 1, height: item.metadata?.height ?? 1 };
   const edits = item.edits;
-  const edited = editedSize(source, edits ?? { crop: null, rotation: 0 });
-  const exact = edits?.ratio === "exact" ? edits.exact : null;
-  const check = toOptimizeSettings(settings, hasAlpha, { edited, exact });
+  const { edited, exact } = editFrame(item);
+  const check = checkItem(item); // the same check the batch uses (M6)
   const errors = check.ok ? {} : check.errors;
   const running = item.job.status === "running";
+  const queued = item.job.status === "queued";
   const sizeLabel = strings.settings.sizeLabel[settings.mode];
 
   return (
@@ -467,10 +456,12 @@ function Panel({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        {running ? (
+        {running || queued ? (
           <button
             type="button"
-            onClick={cancelOptimize}
+            onClick={() => {
+              cancelImage(item.id);
+            }}
             className="rounded-control border border-border px-4 py-2 font-medium"
           >
             {strings.process.cancel}
@@ -478,13 +469,10 @@ function Panel({
         ) : (
           <button
             type="button"
-            disabled={!check.ok || otherRunning}
+            disabled={!check.ok}
             aria-describedby="optimize-hint"
             onClick={() => {
-              if (check.ok && edits) {
-                const engineEdits = toImageEdits(edits, edited, check.outputSize);
-                void optimizeImage(item.id, check.settings, engineEdits);
-              }
+              optimizeImages([item.id]);
             }}
             className="rounded-control bg-accent px-4 py-2 font-medium text-accent-contrast disabled:opacity-50"
           >
@@ -501,12 +489,13 @@ function Panel({
                   item.job.progress.phase,
                 )
               : strings.process.starting
-            : otherRunning
-              ? strings.process.otherRunning
+            : queued
+              ? strings.process.waiting
               : check.ok
                 ? ""
                 : strings.process.fixFirst}
         </p>
+        <ApplyDialog item={item} />
       </div>
 
       {item.job.status === "error" && (

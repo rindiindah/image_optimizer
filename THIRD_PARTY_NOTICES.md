@@ -17,6 +17,7 @@ a dependency that ships to the browser is added, upgraded or removed.
 | [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) (generated stylesheet, incl. Preflight)         | 4.3.5   | MIT     | Copyright (c) Tailwind Labs, Inc.                  |
 | [Zustand](https://github.com/pmndrs/zustand) (`zustand`, image list state, M2)                              | 5.1.0   | MIT     | Copyright (c) 2019 Paul Henschel                   |
 | [React Image Crop](https://github.com/dominictobias/react-image-crop) (`react-image-crop`, crop editor, M4) | 11.1.2  | ISC     | Copyright (c) 2015, Dominic Tobias                 |
+| [client-zip](https://github.com/Touffy/client-zip) (`client-zip`, ZIP download, M6)                         | 2.5.1   | MIT     | Copyright 2020 David Junger                        |
 
 ### MIT License
 
@@ -705,6 +706,6 @@ These are used only to build and test the project and are not part of the delive
 Vite, @vitejs/plugin-react, @tailwindcss/vite, TypeScript, ESLint, @eslint/js,
 typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh,
 eslint-config-prettier, globals, Prettier, Vitest, jsdom, Testing Library
-(`@testing-library/react`, `@testing-library/dom`), Playwright, and the
-`@types/*` packages. Each is distributed under its own licence (MIT or Apache-2.0);
+(`@testing-library/react`, `@testing-library/dom`), Playwright, fflate (reads ZIPs in the
+tests, M6), and the `@types/*` packages. Each is distributed under its own licence (MIT or Apache-2.0);
 see the respective package in `node_modules`.

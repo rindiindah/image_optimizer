@@ -84,7 +84,7 @@ async function optimizeAndMeasure(page: Page): Promise<{ width: number; height: 
   await page.getByLabel(s.formatLabel).selectOption("image/jpeg");
   await page.getByLabel(s.sizeLabel.maximum, { exact: true }).fill("5");
   await page.getByLabel(s.unitLabel(s.sizeLabel.maximum)).selectOption("MB");
-  await page.getByRole("button", { name: strings.process.optimize }).click();
+  await page.getByRole("button", { name: strings.process.optimize, exact: true }).click();
   const pending = page.waitForEvent("download");
   await page.getByRole("link", { name: strings.result.download }).click({ timeout: 60_000 });
   const bytes = readFileSync(await (await pending).path());

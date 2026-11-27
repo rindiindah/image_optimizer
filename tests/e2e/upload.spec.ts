@@ -64,7 +64,7 @@ const row = (page: Page, name: string): Locator =>
     .filter({ has: page.getByRole("button", { name: strings.queue.selectLabel(name) }) });
 
 async function waitUntilRead(page: Page, count: number): Promise<void> {
-  await expect(page.getByRole("button", { name: /^Select / })).toHaveCount(count);
+  await expect(page.getByRole("button", { name: /^Show / })).toHaveCount(count);
   await expect(page.getByRole("main").getByText(strings.queue.status.reading)).toHaveCount(0, {
     timeout: 60_000,
   });
