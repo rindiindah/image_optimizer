@@ -72,8 +72,9 @@ describe("result panel", () => {
       { outcome: "met", candidates: [cand(499_600, "below", "met")], selected: 0, closest: null },
     );
     expect(screen.getByText(t.status.maximumMet("500 KB", "500 KB"))).toBeTruthy();
-    expect(screen.getByText("75% smaller")).toBeTruthy(); // 2 MB → 499.6 KB, rounded down
-    expect(screen.getByText("4000 × 3000 px")).toBeTruthy();
+    // 2 MB → 499.6 KB: 75.02 % and 1,500,400 B saved, both rounded down.
+    expect(screen.getByText("75% smaller (1.50 MB saved)")).toBeTruthy();
+    expect(screen.getAllByText("4000 × 3000 px", { selector: "dd" })).toHaveLength(2); // original + output
     expect(screen.getByText("72", { selector: "dd" })).toBeTruthy();
     expect(screen.getByRole("img", { name: t.previewAlt }).getAttribute("src")).toBe("blob:out-0");
     const link = download();
@@ -171,30 +172,104 @@ describe("result panel", () => {
     expect(download()).toBeNull();
   });
 
-  it("every flag is explained in plain words", () => {
-    const flags: Flag[] = [
-      "dimensions_reduced",
-      "quality_floor_reached",
-      "format_fallback",
-      "transparency_flattened",
-      "colors_reduced",
-      "larger_than_source",
-      "hdr_tone_mapped",
-    ];
+  const allFlags: Flag[] = [
+    "dimensions_reduced",
+    "quality_floor_reached",
+    "format_fallback",
+    "transparency_flattened",
+    "colors_reduced",
+    "larger_than_source",
+    "passthrough",
+    "hdr_tone_mapped",
+  ];
+  it.each(allFlags)("exit criterion: flag %s is shown in its own plain words", (flag) => {
     show(
       { mode: "maximum", maxBytes: 3_000_000 },
       {
         outcome: "met",
-        candidates: [{ ...cand(2_100_000, "below", "met", flags), mime: "image/png" }],
+        candidates: [cand(400_000, "below", "met", [flag])],
         selected: 0,
         closest: null,
       },
     );
-    for (const flag of flags) expect(screen.getByText(t.flags[flag])).toBeTruthy();
-    expect(screen.getByText("5% larger")).toBeTruthy();
-    // After a fallback the real format is shown and used for the name.
+    expect(screen.getByRole("heading", { name: t.flagsHeading })).toBeTruthy();
+    expect(screen.getByText(t.flags[flag])).toBeTruthy();
+    // Exactly one note, and its text is unique to this flag.
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toContain(t.flags[flag]);
+    expect(new Set(Object.values(t.flags)).size).toBe(allFlags.length);
+  });
+
+  it("a larger output: change rounded up, the real format after a fallback names the file", () => {
+    show(
+      { mode: "maximum", maxBytes: 3_000_000 },
+      {
+        outcome: "met",
+        candidates: [
+          {
+            ...cand(2_100_000, "below", "met", ["format_fallback", "larger_than_source"]),
+            mime: "image/png",
+          },
+        ],
+        selected: 0,
+        closest: null,
+      },
+    );
+    expect(screen.getByText("5% larger (100 KB more)")).toBeTruthy();
     expect(screen.getByText("PNG", { selector: "dd" })).toBeTruthy();
     expect(download()?.getAttribute("download")).toBe("photo-optimized.png");
+  });
+
+  it("saved size never overstates: a saving rounds down, an increase rounds up", () => {
+    const { unmount } = show(
+      { mode: "maximum", maxBytes: 1_500_000 },
+      { outcome: "met", candidates: [cand(1_000_400, "below", "met")], selected: 0, closest: null },
+    );
+    expect(screen.getByText("49% smaller (999 KB saved)")).toBeTruthy(); // 999,600 B
+    unmount();
+    useQueue.setState(useQueue.getInitialState(), true);
+    show(
+      { mode: "maximum", maxBytes: 3_000_000 },
+      { outcome: "met", candidates: [cand(2_000_400, "below", "met")], selected: 0, closest: null },
+    );
+    expect(screen.getByText("1% larger (1 KB more)")).toBeTruthy(); // +400 B
+  });
+
+  it("re-encoded: original format and dimensions, photo details not included, comparison shown", () => {
+    show(
+      { mode: "maximum", maxBytes: 500_000 },
+      {
+        outcome: "met",
+        candidates: [{ ...cand(400_000, "below", "met"), width: 2000, height: 1500 }],
+        selected: 0,
+        closest: null,
+      },
+    );
+    expect(screen.getAllByText("JPEG", { selector: "dd" })).toHaveLength(2); // original + output format
+    expect(screen.getByText("4000 × 3000 px", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText("2000 × 1500 px", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText(t.metadata.removed)).toBeTruthy();
+    expect(screen.queryByText(t.metadata.kept)).toBeNull();
+    expect(screen.getByRole("heading", { name: t.compare.heading })).toBeTruthy();
+  });
+
+  it("pass-through: not re-encoded, photo details kept, nothing to compare, downloadable", () => {
+    show(
+      { mode: "maximum", maxBytes: 3_000_000 },
+      {
+        outcome: "met",
+        candidates: [{ ...cand(2_000_000, "below", "met", ["passthrough"]), quality: null }],
+        selected: 0,
+        closest: null,
+      },
+      {},
+    );
+    expect(screen.getByText(t.flags.passthrough)).toBeTruthy();
+    expect(screen.getByText(t.notReencoded, { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText(t.metadata.kept)).toBeTruthy();
+    expect(screen.queryByText(t.metadata.removed)).toBeNull();
+    expect(screen.queryByRole("heading", { name: t.compare.heading })).toBeNull();
+    expect(screen.getByRole("img", { name: t.previewAlt })).toBeTruthy();
+    expect(download()?.getAttribute("download")).toBe("photo-optimized.jpg");
   });
 
   it("an outdated result is labelled and can't be downloaded (Q8)", () => {
@@ -206,6 +281,10 @@ describe("result panel", () => {
     expect(screen.getByText(t.outdated)).toBeTruthy();
     expect(download()).toBeNull();
     expect(screen.getByRole("button", { name: t.download })).toHaveProperty("disabled", true);
+    // The comparison is off (the "before" would no longer match), the output still shows.
+    expect(screen.getByText(t.compare.outdated)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: t.compare.heading })).toBeNull();
+    expect(screen.getByRole("img", { name: t.previewAlt })).toBeTruthy();
   });
 
   it("changing a setting after a result marks it outdated in the UI", () => {
@@ -217,6 +296,23 @@ describe("result panel", () => {
     fireEvent.change(screen.getByLabelText(strings.settings.sizeLabel.maximum), {
       target: { value: "300" },
     });
+    expect(screen.getByText(t.outdated)).toBeTruthy();
+    expect(download()).toBeNull();
+  });
+
+  it("turning off Keep the original (on by default) marks a result outdated", () => {
+    show(
+      { mode: "maximum", maxBytes: 3_000_000 },
+      {
+        outcome: "met",
+        candidates: [cand(2_000_000, "below", "met", ["passthrough"])],
+        selected: 0,
+        closest: null,
+      },
+    );
+    const box = screen.getByRole("checkbox", { name: strings.settings.keepOriginal });
+    expect(box).toHaveProperty("checked", true);
+    fireEvent.click(box);
     expect(screen.getByText(t.outdated)).toBeTruthy();
     expect(download()).toBeNull();
   });

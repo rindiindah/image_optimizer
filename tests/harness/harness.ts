@@ -13,6 +13,7 @@ import type {
   HeicSpikeReport,
   InspectReport,
   PixelsReport,
+  RenderCheckReport,
 } from "./types";
 
 /** A photo-like test image: smooth gradients plus fine noise (compresses like a photo, not a flat graphic). */
@@ -214,15 +215,14 @@ async function bytesOf(source: HarnessSource): Promise<number[]> {
   return [...new Uint8Array(await (await sourceBlob(source)).arrayBuffer())];
 }
 
-async function cropCheck(spec: HarnessRun): Promise<CropCheckReport> {
-  if (spec.source.kind !== "generated") throw new Error("cropCheck needs a generated source");
-  const sourceSize = { width: spec.source.width, height: spec.source.height };
-  const report = await run({ ...spec, source: { ...spec.source, pattern: "coords" } });
-  const file = lastFiles[0];
-  if (!file) return { report, width: 0, height: 0, mismatches: -1 };
-  const out = await decodePixels(file);
-  const crop = spec.edits?.crop ?? { x: 0, y: 0, ...sourceSize };
-  const rotation = spec.edits?.rotation ?? 0;
+/** Every pixel of `out` against the "coords" source pixel it must come from (crop, then rotation). */
+function compareCoords(
+  out: ImageData,
+  sourceSize: { width: number; height: number },
+  edits: HarnessRun["edits"],
+): Pick<CropCheckReport, "mismatches" | "firstMismatch"> {
+  const crop = edits?.crop ?? { x: 0, y: 0, ...sourceSize };
+  const rotation = edits?.rotation ?? 0;
   const cw = crop.width;
   const ch = crop.height;
   let mismatches = 0;
@@ -247,12 +247,47 @@ async function cropCheck(spec: HarnessRun): Promise<CropCheckReport> {
       }
     }
   }
+  return { mismatches, ...(firstMismatch ? { firstMismatch } : {}) };
+}
+
+async function cropCheck(spec: HarnessRun): Promise<CropCheckReport> {
+  if (spec.source.kind !== "generated") throw new Error("cropCheck needs a generated source");
+  const sourceSize = { width: spec.source.width, height: spec.source.height };
+  const report = await run({ ...spec, source: { ...spec.source, pattern: "coords" } });
+  const file = lastFiles[0];
+  if (!file) return { report, width: 0, height: 0, mismatches: -1 };
+  const out = await decodePixels(file);
   return {
     report,
     width: out.width,
     height: out.height,
-    mismatches,
-    ...(firstMismatch ? { firstMismatch } : {}),
+    ...compareCoords(out, sourceSize, spec.edits),
+  };
+}
+
+/** M5: the worker's `render` (comparison "before" at 1:1) against the "coords" source pixels. */
+async function renderCheck(
+  source: Extract<HarnessSource, { kind: "generated" }>,
+  edits: NonNullable<HarnessRun["edits"]>,
+  size: { width: number; height: number },
+): Promise<RenderCheckReport> {
+  const blob = await generate({ ...source, pattern: "coords" });
+  const outcome = await client.render(blob, edits, size);
+  if (outcome.status !== "done") {
+    return {
+      status: outcome.status,
+      code: outcome.status === "error" ? outcome.code : undefined,
+      width: 0,
+      height: 0,
+      mismatches: -1,
+    };
+  }
+  const out = outcome.image;
+  return {
+    status: "done",
+    width: out.width,
+    height: out.height,
+    ...compareCoords(out, { width: source.width, height: source.height }, edits),
   };
 }
 
@@ -271,6 +306,7 @@ async function runPixels(spec: HarnessRun, points: [number, number][]): Promise<
 window.engineHarness = {
   run,
   cropCheck,
+  renderCheck,
   runPixels,
   runBlob,
   capabilities: () => client.capabilities(),

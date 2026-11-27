@@ -35,6 +35,7 @@ export function defaultSettings(meta: Pick<ImageMetadata, "format" | "hasAlpha">
     background: null,
     resize: { width: "", height: "", keepAspect: true },
     minSize: { width: "", height: "" },
+    keepOriginal: true,
   };
 }
 

@@ -102,6 +102,11 @@ export interface ImageSettings {
   resize: { width: string; height: string; keepAspect: boolean };
   /** "Allow smaller dimensions": never below this (as typed; empty = no minimum). */
   minSize: { width: string; height: string };
+  /**
+   * D22: when the image is unedited, keeps its format and already fits, the original file is the
+   * result (pass-through). On by default; off forces a re-encode (removes photo details).
+   */
+  keepOriginal: boolean;
 }
 
 /** Crop editor presets (blueprint 5.3, M4 Q3/Q4). */

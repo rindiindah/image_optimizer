@@ -234,3 +234,43 @@ test.describe("crop, rotate, resize in the worker (M4)", () => {
     await expectClean(page, errors);
   });
 });
+
+test.describe("comparison render in the worker (M5)", () => {
+  test.setTimeout(120_000);
+
+  test("render: the full-size 'before' is pixel-exact after crop + rotation; never enlarges", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    await open(page, errors);
+    const source = {
+      kind: "generated",
+      width: 300,
+      height: 200,
+      transparent: false,
+      type: "image/png",
+    } as const;
+    const crop = { x: 37, y: 21, width: 123, height: 77 };
+    const check = await page.evaluate(
+      ([s, e, z]) => {
+        if (!window.engineHarness) throw new Error("engine harness not loaded");
+        return window.engineHarness.renderCheck(s, e, z);
+      },
+      [source, { crop, rotation: 90, resize: null }, { width: 77, height: 123 }] as const,
+    );
+    expect(check.status).toBe("done");
+    expect([check.width, check.height]).toEqual([77, 123]);
+    expect(check.mismatches, JSON.stringify(check.firstMismatch)).toBe(0);
+
+    const enlarged = await page.evaluate(
+      ([s, e, z]) => {
+        if (!window.engineHarness) throw new Error("engine harness not loaded");
+        return window.engineHarness.renderCheck(s, e, z);
+      },
+      [source, { crop, rotation: 0, resize: null }, { width: 124, height: 77 }] as const,
+    );
+    expect(enlarged.status).toBe("error");
+    expect(enlarged.code).toBe("invalid_settings");
+    await expectClean(page, errors);
+  });
+});

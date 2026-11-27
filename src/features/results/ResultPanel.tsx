@@ -6,6 +6,7 @@ import { downloadName } from "../../utils/download-name";
 import { formatSize, type SizeBound } from "../../utils/file-size";
 import { useQueue } from "../queue/store";
 import { formatName } from "../settings/settings";
+import { ComparisonViewer } from "./ComparisonViewer";
 
 /** The bound a size is shown against, so it never appears on the wrong side of it (D4). */
 function boundFor(goal: SizeGoal, bytes: number): SizeBound {
@@ -47,6 +48,15 @@ function changePercent(source: number, bytes: number): number {
     : -Math.ceil(((bytes - source) / source) * 100);
 }
 
+/** The bytes saved (rounded down) or added (rounded up), via the D4 bound rules. */
+function changeSize(source: number, bytes: number): string {
+  const diff = Math.abs(source - bytes);
+  if (diff === 0) return formatSize(0);
+  return bytes <= source
+    ? formatSize(diff, { kind: "lower", bytes: diff + 1 }) // below a bound → rounds down
+    : formatSize(diff, { kind: "upper", bytes: diff - 1 }); // above a bound → rounds up
+}
+
 function NoOutput({ result }: { result: ItemResult }) {
   const { goal } = result;
   const { closest, outcome } = result.result;
@@ -68,7 +78,7 @@ function NoOutput({ result }: { result: ItemResult }) {
   );
 }
 
-/** The result of the last run for the selected image (M3). Comparison views come in M5. */
+/** The result of the last run for the selected image (M3), with the comparison (M5). */
 export function ResultPanel() {
   const item = useQueue((state) => state.items.find((other) => other.id === state.selectedId));
   if (!item?.result) return null;
@@ -82,6 +92,8 @@ function Panel({ item, result }: { item: QueueItem; result: ItemResult }) {
   const candidate = index === null ? undefined : result.result.candidates[index];
   const url = index === null ? undefined : result.urls[index];
   const candidates = result.result.candidates;
+  const kept = candidate?.flags.includes("passthrough") ?? false;
+  const meta = item.metadata;
 
   return (
     <section
@@ -131,13 +143,36 @@ function Panel({ item, result }: { item: QueueItem; result: ItemResult }) {
             <dt className="text-text-muted">{t.labels.output}</dt>
             <dd>{sizeOf(goal, candidate.bytes)}</dd>
             <dt className="text-text-muted">{t.labels.saving}</dt>
-            <dd>{t.saving(changePercent(item.sizeBytes, candidate.bytes))}</dd>
+            <dd>
+              {t.saving(
+                changePercent(item.sizeBytes, candidate.bytes),
+                changeSize(item.sizeBytes, candidate.bytes),
+              )}
+            </dd>
+            {meta && (
+              <>
+                <dt className="text-text-muted">{t.labels.originalDimensions}</dt>
+                <dd>{strings.queue.dimensions(meta.width, meta.height)}</dd>
+              </>
+            )}
             <dt className="text-text-muted">{t.labels.dimensions}</dt>
             <dd>{strings.queue.dimensions(candidate.width, candidate.height)}</dd>
             <dt className="text-text-muted">{t.labels.format}</dt>
             <dd>{formatName(candidate.mime)}</dd>
+            {meta && (
+              <>
+                <dt className="text-text-muted">{t.labels.originalFormat}</dt>
+                <dd>{strings.formats[meta.format]}</dd>
+              </>
+            )}
             <dt className="text-text-muted">{t.labels.quality}</dt>
-            <dd>{candidate.quality === null ? t.lossless : String(candidate.quality)}</dd>
+            <dd>
+              {kept
+                ? t.notReencoded
+                : candidate.quality === null
+                  ? t.lossless
+                  : String(candidate.quality)}
+            </dd>
             <dt className="text-text-muted">{t.labels.attempts}</dt>
             <dd>{result.result.attempts}</dd>
           </dl>
@@ -153,11 +188,20 @@ function Panel({ item, result }: { item: QueueItem; result: ItemResult }) {
             </>
           )}
 
-          <img
-            src={url}
-            alt={t.previewAlt}
-            className="mx-auto mt-3 max-h-[70vh] w-auto max-w-full object-contain"
-          />
+          <p className="mt-3 text-sm">{kept ? t.metadata.kept : t.metadata.removed}</p>
+
+          {outdated && !kept && (
+            <p className="mt-3 text-sm text-text-muted">{t.compare.outdated}</p>
+          )}
+          {outdated || kept ? (
+            <img
+              src={url}
+              alt={t.previewAlt}
+              className="mx-auto mt-3 max-h-[70vh] w-auto max-w-full object-contain"
+            />
+          ) : (
+            <ComparisonViewer item={item} candidate={candidate} url={url} />
+          )}
 
           <div className="mt-3">
             {outdated ? (

@@ -6,6 +6,7 @@
 import type { Progress } from "../engine/optimize";
 import {
   NO_EDITS,
+  type Dimensions,
   type ImageEdits,
   type OptimizationResult,
   type OptimizeSettings,
@@ -26,6 +27,11 @@ export type ClientOutcome =
 
 export type InspectOutcome =
   | { status: "done"; info: ImageInfo; thumbnail: Blob; preview: Blob }
+  | { status: "cancelled" }
+  | { status: "error"; code: EngineErrorCode };
+
+export type RenderOutcome =
+  | { status: "done"; image: ImageData }
   | { status: "cancelled" }
   | { status: "error"; code: EngineErrorCode };
 
@@ -146,6 +152,38 @@ export class EngineClient {
             thumbnail: new Blob([message.thumbnail.data], { type: message.thumbnail.mime }),
             preview: new Blob([message.preview.data], { type: message.preview.mime }),
           });
+        }
+      },
+      () => ({ status: "error", code: "worker_crashed" }),
+      signal,
+      () => ({ status: "cancelled" }),
+    );
+  }
+
+  /**
+   * The original as cropped and rotated, at `size` (M5 comparison at 100 %). Aborting terminates
+   * the worker, which frees its memory at once.
+   */
+  render(
+    file: Blob,
+    edits: ImageEdits,
+    size: Dimensions,
+    signal?: AbortSignal,
+  ): Promise<RenderOutcome> {
+    const request: WorkerRequest = {
+      type: "render",
+      jobId: this.#nextJobId++,
+      file,
+      edits,
+      size,
+    };
+    return this.#run<RenderOutcome>(
+      request,
+      (message, settle) => {
+        if (message.type === "error") settle({ status: "error", code: message.code });
+        else if (message.type === "rendered") {
+          const pixels = new Uint8ClampedArray(message.data);
+          settle({ status: "done", image: new ImageData(pixels, message.width, message.height) });
         }
       },
       () => ({ status: "error", code: "worker_crashed" }),

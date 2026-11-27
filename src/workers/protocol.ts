@@ -4,6 +4,7 @@
  */
 import type { Progress } from "../engine/optimize";
 import type {
+  Dimensions,
   ImageEdits,
   OptimizationResult,
   OptimizeSettings,
@@ -40,6 +41,11 @@ export type WorkerRequest =
       encoderPreference: EncoderPreference;
     }
   | { type: "capabilities"; jobId: number }
+  /**
+   * The original as cropped and rotated, scaled to `size` (M5 comparison at 100 %, D22).
+   * `edits.resize` is ignored: `size` is the output's real size.
+   */
+  | { type: "render"; jobId: number; file: Blob; edits: ImageEdits; size: Dimensions }
   /** Decode and describe an added file (M2). The worker never receives its name. */
   | { type: "inspect"; jobId: number; file: Blob };
 
@@ -69,4 +75,6 @@ export type WorkerResponse =
       thumbnail: { data: ArrayBuffer; mime: string };
       preview: { data: ArrayBuffer; mime: string };
     }
+  /** RGBA pixels of a `render` request (transferred). */
+  | { type: "rendered"; jobId: number; width: number; height: number; data: ArrayBuffer }
   | { type: "error"; jobId: number; code: EngineErrorCode };

@@ -204,7 +204,10 @@ test.describe("one image end to end (M3)", () => {
       timeout: 60_000,
     });
 
-    const choices = resultSection(page).getByRole("radio");
+    // Only the candidate choice (the comparison has its own View/Zoom radios, M5).
+    const choices = resultSection(page)
+      .getByRole("group", { name: strings.result.choose })
+      .getByRole("radio");
     const count = await choices.count();
     console.log(`[${test.info().project.name}] Target 250 KB → ${String(count || 1)} candidate(s)`);
     const first = await downloadResult(page);

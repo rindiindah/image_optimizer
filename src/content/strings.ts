@@ -12,7 +12,7 @@ export const strings = {
     emptyBody:
       "This app will let you set the exact output file size you need, then crop, resize, convert and download your images.",
     notYetAvailable:
-      "Side-by-side comparison, several images at once and ZIP download aren't available yet. These parts of the app are still being built.",
+      "Several images at once and ZIP download aren't available yet. These parts of the app are still being built.",
     privacy: "All processing happens in your browser. Your images are never uploaded.",
   },
   upload: {
@@ -224,6 +224,9 @@ export const strings = {
     resizeExact: (w: number, h: number) =>
       `${String(w)} × ${String(h)} px, set by Exact size in Crop and rotate.`,
     allowColors: "Allow colour reduction",
+    keepOriginal: "Keep the original file when it already fits",
+    keepOriginalHelp:
+      "Only when the image isn't cropped, rotated or resized and keeps its format. The original keeps its photo details (such as camera, date and location). Turn this off to always make a new file without them.",
     summaryHeading: "Summary",
     summary: {
       maximum: (limit: string) => `At most ${limit}`,
@@ -336,15 +339,46 @@ export const strings = {
       goal: { maximum: "Maximum", range: "Range", target: "Target" },
       output: "Output size",
       saving: "Change",
+      originalDimensions: "Original dimensions",
       dimensions: "Dimensions",
+      originalFormat: "Original format",
       format: "Format",
       quality: "Quality",
       attempts: "Encodes tried",
     },
     rangeGoal: (min: string, max: string) => `${min} – ${max}`,
-    saving: (percent: number) =>
-      percent >= 0 ? `${String(percent)}% smaller` : `${String(-percent)}% larger`,
+    saving: (percent: number, size: string) =>
+      percent >= 0
+        ? `${String(percent)}% smaller (${size} saved)`
+        : `${String(-percent)}% larger (${size} more)`,
     lossless: "Lossless",
+    notReencoded: "Original (not re-encoded)",
+    metadata: {
+      removed:
+        "Photo details (such as camera, date and location) aren't included in the optimized file.",
+      kept: 'This is your original file, unchanged. Its photo details (such as camera, date and location, if present) are kept. To remove them, turn off "Keep the original file when it already fits" in More options and optimize again.',
+    },
+    compare: {
+      heading: "Compare",
+      viewLegend: "View",
+      slider: "Slider",
+      sideBySide: "Side by side",
+      zoomLegend: "Zoom",
+      fit: "Fit",
+      full: "100 %",
+      original: "Original",
+      originalEdited: "Original (cropped and rotated)",
+      optimized: "Optimized",
+      divider: "Divider position",
+      dividerValue: (percent: number) =>
+        `${String(percent)}% original, ${String(100 - percent)}% optimized`,
+      panHint: "At 100 %, drag, scroll or use the arrow keys to move around.",
+      preparing: "Preparing the full-size original…",
+      failed: (what: string) => `The full-size original couldn't be shown: ${what} Showing Fit.`,
+      outdated:
+        "The comparison isn't available while the result is outdated, because the original would no longer match the settings on screen. Optimize again to compare.",
+      originalAlt: "Original image, for comparison",
+    },
     flagsHeading: "Notes",
     flags: {
       dimensions_reduced: "The dimensions were reduced to reach the size, as you allowed.",

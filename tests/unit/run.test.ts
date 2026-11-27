@@ -10,6 +10,8 @@ import {
 } from "../../src/types/engine";
 import type { QueueItem } from "../../src/types/image";
 import type { ClientOutcome, OptimizeOptions } from "../../src/workers/engine-client";
+import { readyItem } from "./helpers/items";
+import { defaultSettings } from "../../src/features/settings/settings";
 
 const item = (id: string): QueueItem => ({
   id,
@@ -189,4 +191,161 @@ describe("optimizeImage", () => {
     next.finish({ status: "cancelled" });
     await second;
   });
+});
+
+describe("pass-through (D22): the original file is kept when it already fits", () => {
+  const BYTES = 400_000;
+  const file = (name = "p.jpg") => new File([new Uint8Array(BYTES)], name);
+  type Meta = Parameters<typeof readyItem>[2];
+  const add = (meta: Meta = {}, patch: Partial<QueueItem> = {}) => {
+    const it = readyItem("p", "p.jpg", { sizeBytes: BYTES, ...meta }, { file: file(), ...patch });
+    state().add([it]);
+    return it;
+  };
+  const withGoal = (
+    goal: OptimizeSettings["goal"],
+    format = settings.format,
+  ): OptimizeSettings => ({
+    ...settings,
+    goal,
+    format,
+  });
+
+  it("unedited, same format, fits: the original File itself, passthrough, 0 encodes, no worker", async () => {
+    const original = add();
+    const fake = fakeEngine();
+    await optimizeImage("p", withGoal({ mode: "maximum", maxBytes: BYTES }), NO_EDITS, fake.engine);
+    expect(fake.optimize).not.toHaveBeenCalled();
+    const stored = get("p")?.result;
+    expect(stored?.files[0]).toBe(original.file); // byte-identical: the same object
+    const c = stored?.result.candidates[0];
+    expect(c).toMatchObject({
+      bytes: BYTES,
+      mime: "image/jpeg",
+      width: 4000,
+      height: 3000,
+      quality: null,
+    });
+    expect(c?.flags).toEqual(["passthrough"]);
+    expect(stored?.result).toMatchObject({ outcome: "met", attempts: 0, selected: 0 });
+    expect(get("p")?.job.status).toBe("idle");
+    expect(state().announcement).toBe(strings.process.announce.done);
+  });
+
+  it("Range inside the bounds and Target within 2 % pass through too", async () => {
+    add();
+    const fake = fakeEngine();
+    await optimizeImage(
+      "p",
+      withGoal({ mode: "range", minBytes: BYTES, maxBytes: BYTES + 1 }),
+      NO_EDITS,
+      fake.engine,
+    );
+    expect(get("p")?.result?.result.attempts).toBe(0);
+    // 400,000 vs 392,157: 2.0 % above → met; the side is "above".
+    await optimizeImage(
+      "p",
+      withGoal({ mode: "target", targetBytes: 392_157 }),
+      NO_EDITS,
+      fake.engine,
+    );
+    expect(get("p")?.result?.result.candidates[0]?.side).toBe("above");
+    expect(fake.optimize).not.toHaveBeenCalled();
+  });
+
+  const crop = { x: 0, y: 0, width: 10, height: 10 };
+  const cases: [string, () => void, OptimizeSettings, ImageEdits][] = [
+    [
+      "setting off",
+      () =>
+        add(
+          {},
+          {
+            settings: {
+              ...defaultSettings({ format: "jpeg", hasAlpha: false }),
+              keepOriginal: false,
+            },
+          },
+        ),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      NO_EDITS,
+    ],
+    [
+      "cropped",
+      () => add(),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      { crop, rotation: 0, resize: null },
+    ],
+    [
+      "rotated",
+      () => add(),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      { crop: null, rotation: 90, resize: null },
+    ],
+    [
+      "resized (incl. Exact size)",
+      () => add(),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      { crop: null, rotation: 0, resize: { width: 10, height: 10 } },
+    ],
+    [
+      "other output format",
+      () => add(),
+      withGoal({ mode: "maximum", maxBytes: BYTES }, "image/webp"),
+      NO_EDITS,
+    ],
+    [
+      "HEIC input",
+      () => add({ format: "heic", mime: "image/heic" }),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      NO_EDITS,
+    ],
+    [
+      "renamed file whose real format differs",
+      () => add({ format: "png", mime: "image/png", extension: "jpg" }),
+      withGoal({ mode: "maximum", maxBytes: BYTES }),
+      NO_EDITS,
+    ],
+    [
+      "animated (first frame only)",
+      () => add({ format: "webp", mime: "image/webp", notices: [{ code: "first_frame_only" }] }),
+      withGoal({ mode: "maximum", maxBytes: BYTES }, "image/webp"),
+      NO_EDITS,
+    ],
+    [
+      "Maximum over by 1 B",
+      () => add(),
+      withGoal({ mode: "maximum", maxBytes: BYTES - 1 }),
+      NO_EDITS,
+    ],
+    [
+      "Range: below the minimum",
+      () => add(),
+      withGoal({ mode: "range", minBytes: BYTES + 1, maxBytes: BYTES + 10 }),
+      NO_EDITS,
+    ],
+    [
+      "Range: above the maximum",
+      () => add(),
+      withGoal({ mode: "range", minBytes: 1_000, maxBytes: BYTES - 1 }),
+      NO_EDITS,
+    ],
+    [
+      "Target just outside 2 %",
+      () => add(),
+      withGoal({ mode: "target", targetBytes: 392_000 }),
+      NO_EDITS,
+    ],
+  ];
+  it.each(cases)(
+    "not taken when %s: the engine runs",
+    async (_label, setup, goalSettings, edits) => {
+      setup();
+      const fake = fakeEngine();
+      const run = optimizeImage("p", goalSettings, edits, fake.engine);
+      expect(fake.optimize).toHaveBeenCalledTimes(1);
+      fake.finish({ status: "cancelled" });
+      await run;
+    },
+  );
 });

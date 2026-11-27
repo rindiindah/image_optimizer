@@ -31,6 +31,7 @@ describe("default settings (Q2, Q3)", () => {
       background: null,
       resize: { width: "", height: "", keepAspect: true },
       minSize: { width: "", height: "" },
+      keepOriginal: true,
     });
   });
 

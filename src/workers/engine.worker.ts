@@ -16,7 +16,14 @@ import {
 import { MAX_PIXELS } from "../utils/limits";
 import { applyEdits, InvalidEditsError, outputSize } from "./edit";
 import { InspectError, inspectFile } from "./inspect";
-import { DecodeError, decodeImage, encodeNative, hasTransparency } from "./pixels";
+import {
+  DecodeError,
+  decodeImage,
+  encodeNative,
+  hasTransparency,
+  pixelsAt,
+  type DecodedImage,
+} from "./pixels";
 import type { CodecCapability, EngineErrorCode, WorkerRequest, WorkerResponse } from "./protocol";
 import { createWorkerEncoder, ImageTooLargeError } from "./worker-encoder";
 
@@ -24,6 +31,20 @@ declare const self: DedicatedWorkerGlobalScope;
 
 function post(message: WorkerResponse, transfer: Transferable[] = []): void {
   self.postMessage(message, transfer);
+}
+
+/** Decodes the file, or posts the error code and returns null. */
+async function decodeOrReport(jobId: number, file: Blob): Promise<DecodedImage | null> {
+  try {
+    return await decodeImage(file, MAX_PIXELS);
+  } catch (error) {
+    post({
+      type: "error",
+      jobId,
+      code: error instanceof DecodeError ? error.code : "decode_failed",
+    });
+    return null;
+  }
 }
 
 async function handleOptimize(
@@ -34,18 +55,9 @@ async function handleOptimize(
     post({ type: "error", jobId, code: "unsupported_browser" });
     return;
   }
-  let bitmap: ImageBitmap;
-  let highBitDepth: boolean;
-  try {
-    ({ bitmap, highBitDepth } = await decodeImage(request.file, MAX_PIXELS));
-  } catch (error) {
-    post({
-      type: "error",
-      jobId,
-      code: error instanceof DecodeError ? error.code : "decode_failed",
-    });
-    return;
-  }
+  const decoded = await decodeOrReport(jobId, request.file);
+  if (!decoded) return;
+  const { bitmap, highBitDepth } = decoded;
 
   let edited: ImageBitmap = bitmap;
   try {
@@ -88,6 +100,38 @@ async function handleOptimize(
     const files = result.candidates.map((c) => c.payload);
     const candidates: Candidate[] = result.candidates.map(withoutPayload);
     post({ type: "result", jobId, result: { ...result, candidates }, files }, files);
+  } catch (error) {
+    post({ type: "error", jobId, code: errorCode(error) });
+  } finally {
+    if (edited !== bitmap) edited.close();
+    bitmap.close();
+  }
+}
+
+/** Same decode → crop → rotate → stepped downscale as an optimize run, without encoding. */
+async function handleRender(request: Extract<WorkerRequest, { type: "render" }>): Promise<void> {
+  const { jobId, size } = request;
+  if (typeof OffscreenCanvas === "undefined") {
+    post({ type: "error", jobId, code: "unsupported_browser" });
+    return;
+  }
+  const decoded = await decodeOrReport(jobId, request.file);
+  if (!decoded) return;
+  const { bitmap } = decoded;
+  let edited: ImageBitmap = bitmap;
+  try {
+    edited = applyEdits(bitmap, request.edits);
+    // Never enlarge, also for display.
+    const ok =
+      Number.isInteger(size.width) &&
+      Number.isInteger(size.height) &&
+      size.width >= 1 &&
+      size.height >= 1 &&
+      size.width <= edited.width &&
+      size.height <= edited.height;
+    if (!ok) throw new InvalidEditsError("size");
+    const { data, width, height } = pixelsAt(edited, size, null);
+    post({ type: "rendered", jobId, width, height, data: data.buffer }, [data.buffer]);
   } catch (error) {
     post({ type: "error", jobId, code: errorCode(error) });
   } finally {
@@ -181,6 +225,8 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
     void handleOptimize(request);
   } else if (request.type === "inspect") {
     void handleInspect(request);
+  } else if (request.type === "render") {
+    void handleRender(request);
   } else {
     void detectCapabilities().then((capabilities) => {
       post({ type: "capabilities", jobId: request.jobId, capabilities });

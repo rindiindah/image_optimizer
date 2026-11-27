@@ -54,6 +54,16 @@ export interface CropCheckReport {
   firstMismatch?: { x: number; y: number; got: number[]; expected: number[] };
 }
 
+/** M5: the worker's `render` pixels compared with the source pixels they must come from. */
+export interface RenderCheckReport {
+  status: "done" | "cancelled" | "error";
+  code?: string | undefined;
+  width: number;
+  height: number;
+  mismatches: number;
+  firstMismatch?: { x: number; y: number; got: number[]; expected: number[] };
+}
+
 /** Output pixels read back at given points (for lossy formats: compare with a tolerance). */
 export interface PixelsReport {
   report: HarnessReport;
@@ -105,6 +115,12 @@ export interface EngineHarness {
   run: (spec: HarnessRun) => Promise<HarnessReport>;
   /** Runs a "coords" image (must be lossless PNG settings) and checks every output pixel. */
   cropCheck: (spec: HarnessRun) => Promise<CropCheckReport>;
+  /** Renders a "coords" image with `render` (M5) and checks every pixel at 1:1. */
+  renderCheck: (
+    source: Extract<HarnessSource, { kind: "generated" }>,
+    edits: ImageEdits,
+    size: { width: number; height: number },
+  ) => Promise<RenderCheckReport>;
   /** Runs, decodes the output and returns its pixels at `points` ([x, y] in output pixels). */
   runPixels: (spec: HarnessRun, points: [number, number][]) => Promise<PixelsReport>;
   /** Runs a given file with Maximum 100 KB JPEG settings (no test-image generation needed). */

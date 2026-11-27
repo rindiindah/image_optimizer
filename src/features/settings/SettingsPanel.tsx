@@ -423,6 +423,21 @@ function Panel({
                 }}
               />
             )}
+            <div>
+              <label className="flex gap-2">
+                <input
+                  type="checkbox"
+                  checked={settings.keepOriginal}
+                  aria-describedby="keep-original-help"
+                  onChange={(e) => {
+                    set({ keepOriginal: e.target.checked });
+                  }}
+                  className="mt-1"
+                />
+                {strings.settings.keepOriginal}
+              </label>
+              <Hint id="keep-original-help">{strings.settings.keepOriginalHelp}</Hint>
+            </div>
             {settings.format === "image/png" && (
               <label className="flex gap-2">
                 <input
